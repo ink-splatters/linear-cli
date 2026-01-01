@@ -4,7 +4,7 @@ use colored::Colorize;
 use serde_json::json;
 use tabled::{Table, Tabled};
 
-use crate::api::LinearClient;
+use crate::api::{resolve_team_id, LinearClient};
 
 #[derive(Subcommand)]
 pub enum CycleCommands {
@@ -54,6 +54,9 @@ pub async fn handle(cmd: CycleCommands) -> Result<()> {
 async fn list_cycles(team: &str, include_all: bool) -> Result<()> {
     let client = LinearClient::new()?;
 
+    // Resolve team key/name to UUID
+    let team_id = resolve_team_id(&client, team).await?;
+
     // First, get the team ID if a name was provided
     let team_query = r#"
         query($teamId: String!) {
@@ -69,15 +72,13 @@ async fn list_cycles(team: &str, include_all: bool) -> Result<()> {
                         endsAt
                         completedAt
                         progress
-                        completedScopeCount
-                        scopeCount
                     }
                 }
             }
         }
     "#;
 
-    let result = client.query(team_query, Some(json!({ "teamId": team }))).await?;
+    let result = client.query(team_query, Some(json!({ "teamId": team_id }))).await?;
     let team_data = &result["data"]["team"];
 
     if team_data.is_null() {
@@ -107,8 +108,6 @@ async fn list_cycles(team: &str, include_all: bool) -> Result<()> {
         })
         .map(|c| {
             let progress = c["progress"].as_f64().unwrap_or(0.0);
-            let completed = c["completedScopeCount"].as_i64().unwrap_or(0);
-            let total = c["scopeCount"].as_i64().unwrap_or(0);
 
             let status = if !c["completedAt"].is_null() {
                 "Completed".to_string()
@@ -128,7 +127,7 @@ async fn list_cycles(team: &str, include_all: bool) -> Result<()> {
                     .as_str()
                     .map(|s| s.chars().take(10).collect())
                     .unwrap_or("-".to_string()),
-                progress: format!("{:.0}% ({}/{})", progress * 100.0, completed, total),
+                progress: format!("{:.0}%", progress * 100.0),
                 id: c["id"].as_str().unwrap_or("").to_string(),
             }
         })
@@ -152,6 +151,9 @@ async fn list_cycles(team: &str, include_all: bool) -> Result<()> {
 async fn current_cycle(team: &str) -> Result<()> {
     let client = LinearClient::new()?;
 
+    // Resolve team key/name to UUID
+    let team_id = resolve_team_id(&client, team).await?;
+
     let query = r#"
         query($teamId: String!) {
             team(id: $teamId) {
@@ -164,8 +166,6 @@ async fn current_cycle(team: &str) -> Result<()> {
                     startsAt
                     endsAt
                     progress
-                    completedScopeCount
-                    scopeCount
                     issues(first: 50) {
                         nodes {
                             id
@@ -179,7 +179,7 @@ async fn current_cycle(team: &str) -> Result<()> {
         }
     "#;
 
-    let result = client.query(query, Some(json!({ "teamId": team }))).await?;
+    let result = client.query(query, Some(json!({ "teamId": team_id }))).await?;
     let team_data = &result["data"]["team"];
 
     if team_data.is_null() {
@@ -195,8 +195,6 @@ async fn current_cycle(team: &str) -> Result<()> {
     }
 
     let progress = cycle["progress"].as_f64().unwrap_or(0.0);
-    let completed = cycle["completedScopeCount"].as_i64().unwrap_or(0);
-    let total = cycle["scopeCount"].as_i64().unwrap_or(0);
     let cycle_number = cycle["number"].as_i64().unwrap_or(0);
     let default_name = format!("Cycle {}", cycle_number);
     let cycle_name = cycle["name"].as_str().unwrap_or(&default_name);
@@ -208,7 +206,7 @@ async fn current_cycle(team: &str) -> Result<()> {
     println!("Cycle Number: {}", cycle_number);
     println!("Start Date: {}", cycle["startsAt"].as_str().map(|s| &s[..10]).unwrap_or("-"));
     println!("End Date: {}", cycle["endsAt"].as_str().map(|s| &s[..10]).unwrap_or("-"));
-    println!("Progress: {:.0}% ({}/{} issues completed)", progress * 100.0, completed, total);
+    println!("Progress: {:.0}%", progress * 100.0);
     println!("ID: {}", cycle["id"].as_str().unwrap_or("-"));
 
     // Show issues in the cycle
