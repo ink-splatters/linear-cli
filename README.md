@@ -21,6 +21,12 @@ A fast, powerful command-line interface for [Linear](https://linear.app) built w
 
 ## Installation
 
+### From crates.io (Recommended)
+
+```bash
+cargo install linear-cli
+```
+
 ### From Source
 
 ```bash
@@ -29,14 +35,24 @@ cd linear-cli
 cargo build --release
 ```
 
+### Pre-built Binaries
+
+Download from [GitHub Releases](https://github.com/Finesssee/linear-cli/releases).
+
 ### Add to PATH
 
 ```bash
 # Linux/macOS
 sudo cp target/release/linear-cli /usr/local/bin/
 
+# Or add to your shell profile
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+
 # Windows (PowerShell as Admin)
 Copy-Item target\release\linear-cli.exe C:\Windows\System32\
+
+# Or add to User PATH (no admin required)
+$env:Path += ";$HOME\.cargo\bin"
 ```
 
 ## Quick Start
