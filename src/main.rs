@@ -4,7 +4,10 @@ mod config;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
-use commands::{issues, labels, projects, teams, users, cycles, comments, documents, search, sync, statuses, git, bulk, interactive};
+use commands::{
+    bulk, comments, cycles, documents, git, interactive, issues, labels, projects, search,
+    statuses, sync, teams, users,
+};
 
 /// Output format for command results
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]

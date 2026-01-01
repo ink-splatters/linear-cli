@@ -78,7 +78,9 @@ async fn list_cycles(team: &str, include_all: bool) -> Result<()> {
         }
     "#;
 
-    let result = client.query(team_query, Some(json!({ "teamId": team_id }))).await?;
+    let result = client
+        .query(team_query, Some(json!({ "teamId": team_id })))
+        .await?;
     let team_data = &result["data"]["team"];
 
     if team_data.is_null() {
@@ -87,9 +89,7 @@ async fn list_cycles(team: &str, include_all: bool) -> Result<()> {
 
     let team_name = team_data["name"].as_str().unwrap_or("");
     let empty = vec![];
-    let cycles = team_data["cycles"]["nodes"]
-        .as_array()
-        .unwrap_or(&empty);
+    let cycles = team_data["cycles"]["nodes"].as_array().unwrap_or(&empty);
 
     if cycles.is_empty() {
         println!("No cycles found for team '{}'.", team_name);
@@ -117,7 +117,10 @@ async fn list_cycles(team: &str, include_all: bool) -> Result<()> {
 
             CycleRow {
                 name: c["name"].as_str().unwrap_or("-").to_string(),
-                number: c["number"].as_i64().map(|n| n.to_string()).unwrap_or("-".to_string()),
+                number: c["number"]
+                    .as_i64()
+                    .map(|n| n.to_string())
+                    .unwrap_or("-".to_string()),
                 status,
                 start_date: c["startsAt"]
                     .as_str()
@@ -134,7 +137,10 @@ async fn list_cycles(team: &str, include_all: bool) -> Result<()> {
         .collect();
 
     if rows.is_empty() {
-        println!("No active cycles found for team '{}'. Use --all to see completed cycles.", team_name);
+        println!(
+            "No active cycles found for team '{}'. Use --all to see completed cycles.",
+            team_name
+        );
         return Ok(());
     }
 
@@ -179,7 +185,9 @@ async fn current_cycle(team: &str) -> Result<()> {
         }
     "#;
 
-    let result = client.query(query, Some(json!({ "teamId": team_id }))).await?;
+    let result = client
+        .query(query, Some(json!({ "teamId": team_id })))
+        .await?;
     let team_data = &result["data"]["team"];
 
     if team_data.is_null() {
@@ -204,8 +212,14 @@ async fn current_cycle(team: &str) -> Result<()> {
 
     println!("Team: {}", team_name);
     println!("Cycle Number: {}", cycle_number);
-    println!("Start Date: {}", cycle["startsAt"].as_str().map(|s| &s[..10]).unwrap_or("-"));
-    println!("End Date: {}", cycle["endsAt"].as_str().map(|s| &s[..10]).unwrap_or("-"));
+    println!(
+        "Start Date: {}",
+        cycle["startsAt"].as_str().map(|s| &s[..10]).unwrap_or("-")
+    );
+    println!(
+        "End Date: {}",
+        cycle["endsAt"].as_str().map(|s| &s[..10]).unwrap_or("-")
+    );
     println!("Progress: {:.0}%", progress * 100.0);
     println!("ID: {}", cycle["id"].as_str().unwrap_or("-"));
 

@@ -55,7 +55,10 @@ async fn list_teams(output: OutputFormat) -> Result<()> {
 
     // Handle JSON output
     if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&result["data"]["teams"]["nodes"])?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&result["data"]["teams"]["nodes"])?
+        );
         return Ok(());
     }
 

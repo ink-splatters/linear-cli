@@ -42,9 +42,11 @@ struct CommentRow {
 pub async fn handle(cmd: CommentCommands) -> Result<()> {
     match cmd {
         CommentCommands::List { issue_id } => list_comments(&issue_id).await,
-        CommentCommands::Create { issue_id, body, parent_id } => {
-            create_comment(&issue_id, &body, parent_id).await
-        }
+        CommentCommands::Create {
+            issue_id,
+            body,
+            parent_id,
+        } => create_comment(&issue_id, &body, parent_id).await,
     }
 }
 
@@ -70,7 +72,9 @@ async fn list_comments(issue_id: &str) -> Result<()> {
         }
     "#;
 
-    let result = client.query(query, Some(json!({ "issueId": issue_id }))).await?;
+    let result = client
+        .query(query, Some(json!({ "issueId": issue_id })))
+        .await?;
     let issue = &result["data"]["issue"];
 
     if issue.is_null() {
@@ -84,9 +88,7 @@ async fn list_comments(issue_id: &str) -> Result<()> {
     println!("{}", "─".repeat(50));
 
     let empty = vec![];
-    let comments = issue["comments"]["nodes"]
-        .as_array()
-        .unwrap_or(&empty);
+    let comments = issue["comments"]["nodes"].as_array().unwrap_or(&empty);
 
     if comments.is_empty() {
         println!("No comments found for this issue.");
@@ -154,16 +156,26 @@ async fn create_comment(issue_id: &str, body: &str, parent_id: Option<String>) -
         }
     "#;
 
-    let result = client.mutate(mutation, Some(json!({ "input": input }))).await?;
+    let result = client
+        .mutate(mutation, Some(json!({ "input": input })))
+        .await?;
 
     if result["data"]["commentCreate"]["success"].as_bool() == Some(true) {
         let comment = &result["data"]["commentCreate"]["comment"];
         let issue_identifier = comment["issue"]["identifier"].as_str().unwrap_or("");
         let issue_title = comment["issue"]["title"].as_str().unwrap_or("");
 
-        println!("{} Comment added to {} {}", "✓".green(), issue_identifier, issue_title);
+        println!(
+            "{} Comment added to {} {}",
+            "✓".green(),
+            issue_identifier,
+            issue_title
+        );
         println!("  ID: {}", comment["id"].as_str().unwrap_or(""));
-        println!("  Author: {}", comment["user"]["name"].as_str().unwrap_or(""));
+        println!(
+            "  Author: {}",
+            comment["user"]["name"].as_str().unwrap_or("")
+        );
 
         let body_preview = comment["body"]
             .as_str()

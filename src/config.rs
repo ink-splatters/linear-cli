@@ -33,11 +33,16 @@ pub fn load_config() -> Result<Config> {
     if path.exists() {
         let content = fs::read_to_string(&path)?;
         let mut config: Config = toml::from_str(&content)?;
-        
+
         // Migrate legacy api_key to workspaces if needed
         if let Some(legacy_key) = config.api_key.take() {
             if !config.workspaces.contains_key("default") {
-                config.workspaces.insert("default".to_string(), Workspace { api_key: legacy_key });
+                config.workspaces.insert(
+                    "default".to_string(),
+                    Workspace {
+                        api_key: legacy_key,
+                    },
+                );
                 if config.current.is_none() {
                     config.current = Some("default".to_string());
                 }
@@ -45,7 +50,7 @@ pub fn load_config() -> Result<Config> {
                 save_config(&config)?;
             }
         }
-        
+
         Ok(config)
     } else {
         Ok(Config::default())
@@ -61,8 +66,16 @@ pub fn save_config(config: &Config) -> Result<()> {
 
 pub fn set_api_key(key: &str) -> Result<()> {
     let mut config = load_config()?;
-    let workspace_name = config.current.clone().unwrap_or_else(|| "default".to_string());
-    config.workspaces.insert(workspace_name.clone(), Workspace { api_key: key.to_string() });
+    let workspace_name = config
+        .current
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
+    config.workspaces.insert(
+        workspace_name.clone(),
+        Workspace {
+            api_key: key.to_string(),
+        },
+    );
     if config.current.is_none() {
         config.current = Some("default".to_string());
     }
@@ -72,7 +85,10 @@ pub fn set_api_key(key: &str) -> Result<()> {
 
 pub fn get_api_key() -> Result<String> {
     let config = load_config()?;
-    let current = config.current.as_ref().context("No workspace selected. Run: linear workspace add <name>")?;
+    let current = config
+        .current
+        .as_ref()
+        .context("No workspace selected. Run: linear workspace add <name>")?;
     let workspace = config.workspaces.get(current).context(format!(
         "Workspace '{}' not found. Run: linear workspace add <name>",
         current
@@ -92,7 +108,7 @@ pub fn show_config() -> Result<()> {
         if let Some(workspace) = config.workspaces.get(current) {
             let key = &workspace.api_key;
             if key.len() > 12 {
-                let masked = format!("{}...{}", &key[..8], &key[key.len()-4..]);
+                let masked = format!("{}...{}", &key[..8], &key[key.len() - 4..]);
                 println!("API Key: {}", masked);
             } else {
                 println!("API Key: {}", key);
@@ -109,80 +125,91 @@ pub fn show_config() -> Result<()> {
 
 pub fn workspace_add(name: &str, api_key: &str) -> Result<()> {
     let mut config = load_config()?;
-    
+
     if config.workspaces.contains_key(name) {
-        anyhow::bail!("Workspace '{}' already exists. Use 'workspace remove' first to replace it.", name);
+        anyhow::bail!(
+            "Workspace '{}' already exists. Use 'workspace remove' first to replace it.",
+            name
+        );
     }
-    
-    config.workspaces.insert(name.to_string(), Workspace { api_key: api_key.to_string() });
-    
+
+    config.workspaces.insert(
+        name.to_string(),
+        Workspace {
+            api_key: api_key.to_string(),
+        },
+    );
+
     // If this is the first workspace, make it current
     if config.current.is_none() {
         config.current = Some(name.to_string());
     }
-    
+
     save_config(&config)?;
     println!("Workspace '{}' added successfully!", name);
-    
+
     if config.current.as_ref() == Some(&name.to_string()) {
         println!("Switched to workspace '{}'", name);
     }
-    
+
     Ok(())
 }
 
 pub fn workspace_list() -> Result<()> {
     let config = load_config()?;
-    
+
     if config.workspaces.is_empty() {
         println!("No workspaces configured. Run: linear workspace add <name>");
         return Ok(());
     }
-    
+
     println!("Configured workspaces:");
     println!();
-    
+
     for (name, workspace) in &config.workspaces {
         let is_current = config.current.as_ref() == Some(name);
         let marker = if is_current { "*" } else { " " };
         let key = &workspace.api_key;
         let masked = if key.len() > 12 {
-            format!("{}...{}", &key[..8], &key[key.len()-4..])
+            format!("{}...{}", &key[..8], &key[key.len() - 4..])
         } else {
             key.clone()
         };
         println!("{} {} ({})", marker, name, masked);
     }
-    
+
     println!();
     println!("* = current workspace");
-    
+
     Ok(())
 }
 
 pub fn workspace_switch(name: &str) -> Result<()> {
     let mut config = load_config()?;
-    
+
     if !config.workspaces.contains_key(name) {
-        anyhow::bail!("Workspace '{}' not found. Use 'workspace list' to see available workspaces.", name);
+        anyhow::bail!(
+            "Workspace '{}' not found. Use 'workspace list' to see available workspaces.",
+            name
+        );
     }
-    
+
     config.current = Some(name.to_string());
     save_config(&config)?;
     println!("Switched to workspace '{}'", name);
-    
+
     Ok(())
 }
 
 pub fn workspace_current() -> Result<()> {
     let config = load_config()?;
-    
+
     if let Some(current) = &config.current {
         println!("Current workspace: {}", current);
         if let Some(workspace) = config.workspaces.get(current) {
             let key = &workspace.api_key;
             if key.len() > 12 {
-                let masked = format!("{}...{}", &key[..8], &key[key.len()-4..]);
+                let masked = format!("{}...{}", &key[..8], &key[key.len() - 4..]);
                 println!("API Key: {}", masked);
             } else {
                 println!("API Key: {}", key);
@@ -191,19 +218,19 @@ pub fn workspace_current() -> Result<()> {
     } else {
         println!("No workspace selected. Run: linear workspace add <name>");
     }
-    
+
     Ok(())
 }
 
 pub fn workspace_remove(name: &str) -> Result<()> {
     let mut config = load_config()?;
-    
+
     if !config.workspaces.contains_key(name) {
         anyhow::bail!("Workspace '{}' not found.", name);
     }
-    
+
     config.workspaces.remove(name);
-    
+
     // If we removed the current workspace, clear it or switch to another
     if config.current.as_ref() == Some(&name.to_string()) {
         config.current = config.workspaces.keys().next().cloned();
@@ -211,9 +238,9 @@ pub fn workspace_remove(name: &str) -> Result<()> {
             println!("Switched to workspace '{}'", new_current);
         }
     }
-    
+
     save_config(&config)?;
     println!("Workspace '{}' removed.", name);
-    
+
     Ok(())
 }

@@ -59,12 +59,16 @@ struct ProjectRow {
 
 pub async fn handle(cmd: SearchCommands) -> Result<()> {
     match cmd {
-        SearchCommands::Issues { query, limit, archived } => {
-            search_issues(&query, limit, archived).await
-        }
-        SearchCommands::Projects { query, limit, archived } => {
-            search_projects(&query, limit, archived).await
-        }
+        SearchCommands::Issues {
+            query,
+            limit,
+            archived,
+        } => search_issues(&query, limit, archived).await,
+        SearchCommands::Projects {
+            query,
+            limit,
+            archived,
+        } => search_projects(&query, limit, archived).await,
     }
 }
 
@@ -186,7 +190,11 @@ async fn search_projects(query: &str, limit: u32, include_archived: bool) -> Res
             ProjectRow {
                 name: p["name"].as_str().unwrap_or("").to_string(),
                 status: p["status"]["name"].as_str().unwrap_or("-").to_string(),
-                labels: if labels.is_empty() { "-".to_string() } else { labels.join(", ") },
+                labels: if labels.is_empty() {
+                    "-".to_string()
+                } else {
+                    labels.join(", ")
+                },
                 id: p["id"].as_str().unwrap_or("").to_string(),
             }
         })

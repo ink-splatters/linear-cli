@@ -78,12 +78,21 @@ pub async fn handle(cmd: DocumentCommands) -> Result<()> {
     match cmd {
         DocumentCommands::List { project, archived } => list_documents(project, archived).await,
         DocumentCommands::Get { id } => get_document(&id).await,
-        DocumentCommands::Create { title, project, content, icon, color } => {
-            create_document(&title, &project, content, icon, color).await
-        }
-        DocumentCommands::Update { id, title, content, icon, color, project } => {
-            update_document(&id, title, content, icon, color, project).await
-        }
+        DocumentCommands::Create {
+            title,
+            project,
+            content,
+            icon,
+            color,
+        } => create_document(&title, &project, content, icon, color).await,
+        DocumentCommands::Update {
+            id,
+            title,
+            content,
+            icon,
+            color,
+            project,
+        } => update_document(&id, title, content, icon, color, project).await,
     }
 }
 
@@ -118,7 +127,8 @@ async fn list_documents(project_id: Option<String>, include_archived: bool) -> R
             .iter()
             .filter(|d| {
                 d["project"]["id"].as_str() == Some(pid.as_str())
-                    || d["project"]["name"].as_str().map(|n| n.to_lowercase()) == Some(pid.to_lowercase())
+                    || d["project"]["name"].as_str().map(|n| n.to_lowercase())
+                        == Some(pid.to_lowercase())
             })
             .collect()
     } else {
@@ -256,11 +266,17 @@ async fn create_document(
         }
     "#;
 
-    let result = client.mutate(mutation, Some(json!({ "input": input }))).await?;
+    let result = client
+        .mutate(mutation, Some(json!({ "input": input })))
+        .await?;
 
     if result["data"]["documentCreate"]["success"].as_bool() == Some(true) {
         let document = &result["data"]["documentCreate"]["document"];
-        println!("{} Created document: {}", "+".green(), document["title"].as_str().unwrap_or(""));
+        println!(
+            "{} Created document: {}",
+            "+".green(),
+            document["title"].as_str().unwrap_or("")
+        );
         println!("  ID: {}", document["id"].as_str().unwrap_or(""));
         println!("  URL: {}", document["url"].as_str().unwrap_or(""));
     } else {
@@ -311,7 +327,9 @@ async fn update_document(
         }
     "#;
 
-    let result = client.mutate(mutation, Some(json!({ "id": id, "input": input }))).await?;
+    let result = client
+        .mutate(mutation, Some(json!({ "id": id, "input": input })))
+        .await?;
 
     if result["data"]["documentUpdate"]["success"].as_bool() == Some(true) {
         println!("{} Document updated", "+".green());

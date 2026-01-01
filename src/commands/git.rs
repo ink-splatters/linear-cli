@@ -137,9 +137,12 @@ pub async fn handle(cmd: GitCommands) -> Result<()> {
             let vcs = get_vcs(vcs)?;
             show_commits(limit, vcs).await
         }
-        GitCommands::Pr { issue, base, draft, web } => {
-            create_pr(&issue, &base, draft, web).await
-        }
+        GitCommands::Pr {
+            issue,
+            base,
+            draft,
+            web,
+        } => create_pr(&issue, &base, draft, web).await,
     }
 }
 
@@ -196,9 +199,7 @@ fn generate_branch_name(identifier: &str, title: &str) -> String {
 }
 
 fn run_git_command(args: &[&str]) -> Result<String> {
-    let output = Command::new("git")
-        .args(args)
-        .output()?;
+    let output = Command::new("git").args(args).output()?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -209,9 +210,7 @@ fn run_git_command(args: &[&str]) -> Result<String> {
 }
 
 fn run_jj_command(args: &[&str]) -> Result<String> {
-    let output = Command::new("jj")
-        .args(args)
-        .output()?;
+    let output = Command::new("jj").args(args).output()?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -255,10 +254,21 @@ async fn checkout_issue(issue_id: &str, custom_branch: Option<String>, vcs: Vcs)
     let (identifier, title, linear_branch, url) = get_issue_info(issue_id).await?;
 
     let branch_name = custom_branch
-        .or_else(|| if linear_branch.is_empty() { None } else { Some(linear_branch) })
+        .or_else(|| {
+            if linear_branch.is_empty() {
+                None
+            } else {
+                Some(linear_branch)
+            }
+        })
         .unwrap_or_else(|| generate_branch_name(&identifier, &title));
 
-    println!("{} {} {}", identifier.cyan(), title.dimmed(), format!("({})", vcs).dimmed());
+    println!(
+        "{} {} {}",
+        identifier.cyan(),
+        title.dimmed(),
+        format!("({})", vcs).dimmed()
+    );
 
     match vcs {
         Vcs::Git => {
@@ -278,7 +288,7 @@ async fn checkout_issue(issue_id: &str, custom_branch: Option<String>, vcs: Vcs)
         Vcs::Jj => {
             // For jj, we create a new change with the issue info in the description
             let description = generate_jj_description(&identifier, &title, &url);
-            
+
             if branch_exists(&branch_name, vcs) {
                 // Bookmark exists, switch to it
                 println!("Switching to existing bookmark: {}", branch_name.green());
@@ -287,7 +297,7 @@ async fn checkout_issue(issue_id: &str, custom_branch: Option<String>, vcs: Vcs)
                 // Create a new change with description
                 println!("Creating new change for issue: {}", identifier.green());
                 run_jj_command(&["new", "-m", &description])?;
-                
+
                 // Create a bookmark for the branch name
                 println!("Creating bookmark: {}", branch_name.green());
                 run_jj_command(&["bookmark", "create", &branch_name])?;
@@ -304,7 +314,12 @@ async fn checkout_issue(issue_id: &str, custom_branch: Option<String>, vcs: Vcs)
 async fn show_branch(issue_id: &str, vcs: Vcs) -> Result<()> {
     let (identifier, title, linear_branch, url) = get_issue_info(issue_id).await?;
 
-    println!("{} {} {}", identifier.cyan().bold(), title, format!("({})", vcs).dimmed());
+    println!(
+        "{} {} {}",
+        identifier.cyan().bold(),
+        title,
+        format!("({})", vcs).dimmed()
+    );
     println!("{}", "-".repeat(50));
 
     if !linear_branch.is_empty() {
@@ -345,10 +360,21 @@ async fn create_branch(issue_id: &str, custom_branch: Option<String>, vcs: Vcs) 
     let (identifier, title, linear_branch, url) = get_issue_info(issue_id).await?;
 
     let branch_name = custom_branch
-        .or_else(|| if linear_branch.is_empty() { None } else { Some(linear_branch) })
+        .or_else(|| {
+            if linear_branch.is_empty() {
+                None
+            } else {
+                Some(linear_branch)
+            }
+        })
         .unwrap_or_else(|| generate_branch_name(&identifier, &title));
 
-    println!("{} {} {}", identifier.cyan(), title.dimmed(), format!("({})", vcs).dimmed());
+    println!(
+        "{} {} {}",
+        identifier.cyan(),
+        title.dimmed(),
+        format!("({})", vcs).dimmed()
+    );
 
     match vcs {
         Vcs::Git => {
@@ -371,10 +397,10 @@ async fn create_branch(issue_id: &str, custom_branch: Option<String>, vcs: Vcs) 
             let description = generate_jj_description(&identifier, &title, &url);
             run_jj_command(&["new", "-m", &description])?;
             run_jj_command(&["bookmark", "create", &branch_name])?;
-            
+
             // Go back to original change
             run_jj_command(&["prev"])?;
-            
+
             println!("{} Created bookmark: {}", "✓".green(), branch_name);
         }
     }
@@ -385,7 +411,10 @@ async fn create_branch(issue_id: &str, custom_branch: Option<String>, vcs: Vcs) 
 async fn show_commits(limit: usize, vcs: Vcs) -> Result<()> {
     match vcs {
         Vcs::Git => {
-            println!("{}", "The 'commits' subcommand is designed for jj. For git, use 'git log'.".yellow());
+            println!(
+                "{}",
+                "The 'commits' subcommand is designed for jj. For git, use 'git log'.".yellow()
+            );
             println!("Tip: Use --vcs jj to explicitly use jj commands.");
             Ok(())
         }
@@ -397,9 +426,11 @@ async fn show_commits(limit: usize, vcs: Vcs) -> Result<()> {
             let limit_str = limit.to_string();
             let output = run_jj_command(&[
                 "log",
-                "-r", &format!("ancestors(@, {})", limit_str),
+                "-r",
+                &format!("ancestors(@, {})", limit_str),
                 "--no-graph",
-                "-T", r#"change_id.short() ++ " " ++ description.first_line() ++ "\n""#,
+                "-T",
+                r#"change_id.short() ++ " " ++ description.first_line() ++ "\n""#,
             ])?;
 
             // Parse and display commits, highlighting those with Linear trailers
@@ -416,15 +447,11 @@ async fn show_commits(limit: usize, vcs: Vcs) -> Result<()> {
                 };
 
                 // Check if this commit has Linear trailers
-                let full_desc = run_jj_command(&[
-                    "log",
-                    "-r", change_id,
-                    "--no-graph",
-                    "-T", "description",
-                ])?;
+                let full_desc =
+                    run_jj_command(&["log", "-r", change_id, "--no-graph", "-T", "description"])?;
 
-                let has_linear_trailer = full_desc.contains("Linear-Issue:") || 
-                                         full_desc.contains("Linear-URL:");
+                let has_linear_trailer =
+                    full_desc.contains("Linear-Issue:") || full_desc.contains("Linear-URL:");
 
                 if has_linear_trailer {
                     // Extract the Linear issue ID
@@ -452,9 +479,7 @@ async fn show_commits(limit: usize, vcs: Vcs) -> Result<()> {
 }
 
 fn run_gh_command(args: &[&str]) -> Result<String> {
-    let output = Command::new("gh")
-        .args(args)
-        .output()?;
+    let output = Command::new("gh").args(args).output()?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -473,7 +498,9 @@ async fn create_pr(issue_id: &str, base: &str, draft: bool, web: bool) -> Result
     println!("{} {}", identifier.cyan(), title.dimmed());
     println!("Creating PR with title: {}", pr_title.green());
 
-    let mut args = vec!["pr", "create", "--title", &pr_title, "--body", &pr_body, "--base", base];
+    let mut args = vec![
+        "pr", "create", "--title", &pr_title, "--body", &pr_body, "--base", base,
+    ];
 
     if draft {
         args.push("--draft");

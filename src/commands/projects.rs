@@ -86,12 +86,19 @@ pub async fn handle(cmd: ProjectCommands, output: OutputFormat) -> Result<()> {
     match cmd {
         ProjectCommands::List { archived } => list_projects(archived, output).await,
         ProjectCommands::Get { id } => get_project(&id, output).await,
-        ProjectCommands::Create { name, team, description, color } => {
-            create_project(&name, &team, description, color, output).await
-        }
-        ProjectCommands::Update { id, name, description, color, icon } => {
-            update_project(&id, name, description, color, icon, output).await
-        }
+        ProjectCommands::Create {
+            name,
+            team,
+            description,
+            color,
+        } => create_project(&name, &team, description, color, output).await,
+        ProjectCommands::Update {
+            id,
+            name,
+            description,
+            color,
+            icon,
+        } => update_project(&id, name, description, color, icon, output).await,
         ProjectCommands::Delete { id, force } => delete_project(&id, force).await,
         ProjectCommands::AddLabels { id, labels } => add_labels(&id, labels, output).await,
     }
@@ -116,11 +123,16 @@ async fn list_projects(include_archived: bool, output: OutputFormat) -> Result<(
         }
     "#;
 
-    let result = client.query(query, Some(json!({ "includeArchived": include_archived }))).await?;
+    let result = client
+        .query(query, Some(json!({ "includeArchived": include_archived })))
+        .await?;
 
     // Handle JSON output
     if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&result["data"]["projects"]["nodes"])?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&result["data"]["projects"]["nodes"])?
+        );
         return Ok(());
     }
 
@@ -136,13 +148,11 @@ async fn list_projects(include_archived: bool, output: OutputFormat) -> Result<(
 
     let rows: Vec<ProjectRow> = projects
         .iter()
-        .map(|p| {
-            ProjectRow {
-                name: p["name"].as_str().unwrap_or("").to_string(),
-                status: p["state"].as_str().unwrap_or("-").to_string(),
-                labels: "-".to_string(),
-                id: p["id"].as_str().unwrap_or("").to_string(),
-            }
+        .map(|p| ProjectRow {
+            name: p["name"].as_str().unwrap_or("").to_string(),
+            status: p["state"].as_str().unwrap_or("-").to_string(),
+            labels: "-".to_string(),
+            id: p["id"].as_str().unwrap_or("").to_string(),
         })
         .collect();
 
@@ -192,10 +202,16 @@ async fn get_project(id: &str, output: OutputFormat) -> Result<()> {
         println!("Summary: {}", summary);
     }
     if let Some(desc) = project["description"].as_str() {
-        println!("Description: {}", desc.chars().take(100).collect::<String>());
+        println!(
+            "Description: {}",
+            desc.chars().take(100).collect::<String>()
+        );
     }
 
-    println!("Status: {}", project["status"]["name"].as_str().unwrap_or("-"));
+    println!(
+        "Status: {}",
+        project["status"]["name"].as_str().unwrap_or("-")
+    );
     println!("Color: {}", project["color"].as_str().unwrap_or("-"));
     println!("Icon: {}", project["icon"].as_str().unwrap_or("-"));
     println!("URL: {}", project["url"].as_str().unwrap_or("-"));
@@ -220,7 +236,13 @@ async fn get_project(id: &str, output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
-async fn create_project(name: &str, team: &str, description: Option<String>, color: Option<String>, output: OutputFormat) -> Result<()> {
+async fn create_project(
+    name: &str,
+    team: &str,
+    description: Option<String>,
+    color: Option<String>,
+    output: OutputFormat,
+) -> Result<()> {
     let client = LinearClient::new()?;
 
     // Resolve team key/name to UUID
@@ -247,7 +269,9 @@ async fn create_project(name: &str, team: &str, description: Option<String>, col
         }
     "#;
 
-    let result = client.mutate(mutation, Some(json!({ "input": input }))).await?;
+    let result = client
+        .mutate(mutation, Some(json!({ "input": input })))
+        .await?;
 
     if result["data"]["projectCreate"]["success"].as_bool() == Some(true) {
         let project = &result["data"]["projectCreate"]["project"];
@@ -258,7 +282,11 @@ async fn create_project(name: &str, team: &str, description: Option<String>, col
             return Ok(());
         }
 
-        println!("{} Created project: {}", "+".green(), project["name"].as_str().unwrap_or(""));
+        println!(
+            "{} Created project: {}",
+            "+".green(),
+            project["name"].as_str().unwrap_or("")
+        );
         println!("  ID: {}", project["id"].as_str().unwrap_or(""));
         println!("  URL: {}", project["url"].as_str().unwrap_or(""));
     } else {
@@ -301,7 +329,9 @@ async fn update_project(
         }
     "#;
 
-    let result = client.mutate(mutation, Some(json!({ "id": id, "input": input }))).await?;
+    let result = client
+        .mutate(mutation, Some(json!({ "id": id, "input": input })))
+        .await?;
 
     if result["data"]["projectUpdate"]["success"].as_bool() == Some(true) {
         let project = &result["data"]["projectUpdate"]["project"];
@@ -364,7 +394,9 @@ async fn add_labels(id: &str, label_ids: Vec<String>, output: OutputFormat) -> R
     "#;
 
     let input = json!({ "labelIds": label_ids });
-    let result = client.mutate(mutation, Some(json!({ "id": id, "input": input }))).await?;
+    let result = client
+        .mutate(mutation, Some(json!({ "id": id, "input": input })))
+        .await?;
 
     if result["data"]["projectUpdate"]["success"].as_bool() == Some(true) {
         let project = &result["data"]["projectUpdate"]["project"];

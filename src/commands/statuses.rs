@@ -71,7 +71,9 @@ async fn list_statuses(team: &str) -> Result<()> {
         }
     "#;
 
-    let result = client.query(query, Some(json!({ "teamId": team_id }))).await?;
+    let result = client
+        .query(query, Some(json!({ "teamId": team_id })))
+        .await?;
     let team_data = &result["data"]["team"];
 
     if team_data.is_null() {
@@ -80,16 +82,17 @@ async fn list_statuses(team: &str) -> Result<()> {
 
     let team_name = team_data["name"].as_str().unwrap_or("");
     let empty = vec![];
-    let states = team_data["states"]["nodes"]
-        .as_array()
-        .unwrap_or(&empty);
+    let states = team_data["states"]["nodes"].as_array().unwrap_or(&empty);
 
     if states.is_empty() {
         println!("No statuses found for team '{}'.", team_name);
         return Ok(());
     }
 
-    println!("{}", format!("Issue statuses for team '{}'", team_name).bold());
+    println!(
+        "{}",
+        format!("Issue statuses for team '{}'", team_name).bold()
+    );
     println!("{}", "-".repeat(50));
 
     let rows: Vec<StatusRow> = states
@@ -109,7 +112,10 @@ async fn list_statuses(team: &str) -> Result<()> {
                 name: s["name"].as_str().unwrap_or("").to_string(),
                 status_type: type_colored,
                 color: s["color"].as_str().unwrap_or("").to_string(),
-                position: s["position"].as_f64().map(|p| format!("{:.0}", p)).unwrap_or("-".to_string()),
+                position: s["position"]
+                    .as_f64()
+                    .map(|p| format!("{:.0}", p))
+                    .unwrap_or("-".to_string()),
                 id: s["id"].as_str().unwrap_or("").to_string(),
             }
         })
@@ -148,7 +154,9 @@ async fn get_status(id: &str, team: &str) -> Result<()> {
         }
     "#;
 
-    let result = client.query(query, Some(json!({ "teamId": team_id }))).await?;
+    let result = client
+        .query(query, Some(json!({ "teamId": team_id })))
+        .await?;
     let team_data = &result["data"]["team"];
 
     if team_data.is_null() {
@@ -156,14 +164,12 @@ async fn get_status(id: &str, team: &str) -> Result<()> {
     }
 
     let empty = vec![];
-    let states = team_data["states"]["nodes"]
-        .as_array()
-        .unwrap_or(&empty);
+    let states = team_data["states"]["nodes"].as_array().unwrap_or(&empty);
 
     // Find matching status by ID or name
     let status = states.iter().find(|s| {
-        s["id"].as_str() == Some(id) ||
-        s["name"].as_str().map(|n| n.to_lowercase()) == Some(id.to_lowercase())
+        s["id"].as_str() == Some(id)
+            || s["name"].as_str().map(|n| n.to_lowercase()) == Some(id.to_lowercase())
     });
 
     match status {
@@ -172,7 +178,13 @@ async fn get_status(id: &str, team: &str) -> Result<()> {
             println!("{}", "-".repeat(40));
             println!("Type: {}", s["type"].as_str().unwrap_or("-"));
             println!("Color: {}", s["color"].as_str().unwrap_or("-"));
-            println!("Position: {}", s["position"].as_f64().map(|p| format!("{:.0}", p)).unwrap_or("-".to_string()));
+            println!(
+                "Position: {}",
+                s["position"]
+                    .as_f64()
+                    .map(|p| format!("{:.0}", p))
+                    .unwrap_or("-".to_string())
+            );
             if let Some(desc) = s["description"].as_str() {
                 if !desc.is_empty() {
                     println!("Description: {}", desc);

@@ -102,7 +102,7 @@ async fn resolve_user_id(client: &LinearClient, user: &str) -> Result<String> {
     for u in users {
         let name = u["name"].as_str().unwrap_or("");
         let email = u["email"].as_str().unwrap_or("");
-        
+
         if name.eq_ignore_ascii_case(user) || email.eq_ignore_ascii_case(user) {
             if let Some(id) = u["id"].as_str() {
                 return Ok(id.to_string());
@@ -134,7 +134,9 @@ async fn resolve_state_id(client: &LinearClient, team_id: &str, state: &str) -> 
         }
     "#;
 
-    let result = client.query(query, Some(json!({ "teamId": team_id }))).await?;
+    let result = client
+        .query(query, Some(json!({ "teamId": team_id })))
+        .await?;
     let empty = vec![];
     let states = result["data"]["team"]["states"]["nodes"]
         .as_array()
@@ -192,7 +194,10 @@ async fn resolve_label_id(client: &LinearClient, label: &str) -> Result<String> 
 }
 
 /// Get issue details including UUID and team ID from identifier (e.g., "LIN-123")
-async fn get_issue_info(client: &LinearClient, issue_id: &str) -> Result<(String, String, Option<String>)> {
+async fn get_issue_info(
+    client: &LinearClient,
+    issue_id: &str,
+) -> Result<(String, String, Option<String>)> {
     let query = r#"
         query($id: String!) {
             issue(id: $id) {
@@ -222,27 +227,17 @@ async fn get_issue_info(client: &LinearClient, issue_id: &str) -> Result<(String
         .ok_or_else(|| anyhow::anyhow!("Failed to get team ID"))?
         .to_string();
 
-    let identifier = issue["identifier"]
-        .as_str()
-        .map(|s| s.to_string());
+    let identifier = issue["identifier"].as_str().map(|s| s.to_string());
 
     Ok((uuid, team_id, identifier))
 }
 
 pub async fn handle(cmd: BulkCommands) -> Result<()> {
     match cmd {
-        BulkCommands::UpdateState { state, issues } => {
-            bulk_update_state(&state, issues).await
-        }
-        BulkCommands::Assign { user, issues } => {
-            bulk_assign(&user, issues).await
-        }
-        BulkCommands::Label { label, issues } => {
-            bulk_label(&label, issues).await
-        }
-        BulkCommands::Unassign { issues } => {
-            bulk_unassign(issues).await
-        }
+        BulkCommands::UpdateState { state, issues } => bulk_update_state(&state, issues).await,
+        BulkCommands::Assign { user, issues } => bulk_assign(&user, issues).await,
+        BulkCommands::Label { label, issues } => bulk_label(&label, issues).await,
+        BulkCommands::Unassign { issues } => bulk_unassign(issues).await,
     }
 }
 
@@ -268,9 +263,7 @@ async fn bulk_update_state(state: &str, issues: Vec<String>) -> Result<()> {
             let client = &client;
             let state = &state_owned;
             let id = issue_id.clone();
-            async move {
-                update_issue_state(client, &id, state).await
-            }
+            async move { update_issue_state(client, &id, state).await }
         })
         .collect();
 
@@ -310,9 +303,7 @@ async fn bulk_assign(user: &str, issues: Vec<String>) -> Result<()> {
             let client = &client;
             let user_id = &user_id;
             let id = issue_id.clone();
-            async move {
-                update_issue_assignee(client, &id, Some(user_id)).await
-            }
+            async move { update_issue_assignee(client, &id, Some(user_id)).await }
         })
         .collect();
 
@@ -352,9 +343,7 @@ async fn bulk_label(label: &str, issues: Vec<String>) -> Result<()> {
             let client = &client;
             let label_id = &label_id;
             let id = issue_id.clone();
-            async move {
-                add_label_to_issue(client, &id, label_id).await
-            }
+            async move { add_label_to_issue(client, &id, label_id).await }
         })
         .collect();
 
@@ -370,11 +359,7 @@ async fn bulk_unassign(issues: Vec<String>) -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "{} Unassigning {} issues...",
-        ">>".cyan(),
-        issues.len()
-    );
+    println!("{} Unassigning {} issues...", ">>".cyan(), issues.len());
 
     let client = LinearClient::new()?;
 
@@ -383,9 +368,7 @@ async fn bulk_unassign(issues: Vec<String>) -> Result<()> {
         .map(|issue_id| {
             let client = &client;
             let id = issue_id.clone();
-            async move {
-                update_issue_assignee(client, &id, None).await
-            }
+            async move { update_issue_assignee(client, &id, None).await }
         })
         .collect();
 
@@ -554,44 +537,45 @@ async fn add_label_to_issue(client: &LinearClient, issue_id: &str, label_id: &st
         }
     "#;
 
-    let (uuid, identifier, existing_label_ids) = match client.query(query, Some(json!({ "id": issue_id }))).await {
-        Ok(result) => {
-            if result["data"]["issue"].is_null() {
+    let (uuid, identifier, existing_label_ids) =
+        match client.query(query, Some(json!({ "id": issue_id }))).await {
+            Ok(result) => {
+                if result["data"]["issue"].is_null() {
+                    return BulkResult {
+                        issue_id: issue_id.to_string(),
+                        success: false,
+                        identifier: None,
+                        error: Some("Issue not found".to_string()),
+                    };
+                }
+
+                let uuid = result["data"]["issue"]["id"]
+                    .as_str()
+                    .unwrap_or(issue_id)
+                    .to_string();
+
+                let identifier = result["data"]["issue"]["identifier"]
+                    .as_str()
+                    .map(|s| s.to_string());
+
+                let labels: Vec<String> = result["data"]["issue"]["labels"]["nodes"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .filter_map(|l| l["id"].as_str().map(|s| s.to_string()))
+                    .collect();
+
+                (uuid, identifier, labels)
+            }
+            Err(e) => {
                 return BulkResult {
                     issue_id: issue_id.to_string(),
                     success: false,
                     identifier: None,
-                    error: Some("Issue not found".to_string()),
+                    error: Some(e.to_string()),
                 };
             }
-
-            let uuid = result["data"]["issue"]["id"]
-                .as_str()
-                .unwrap_or(issue_id)
-                .to_string();
-
-            let identifier = result["data"]["issue"]["identifier"]
-                .as_str()
-                .map(|s| s.to_string());
-
-            let labels: Vec<String> = result["data"]["issue"]["labels"]["nodes"]
-                .as_array()
-                .unwrap_or(&vec![])
-                .iter()
-                .filter_map(|l| l["id"].as_str().map(|s| s.to_string()))
-                .collect();
-
-            (uuid, identifier, labels)
-        }
-        Err(e) => {
-            return BulkResult {
-                issue_id: issue_id.to_string(),
-                success: false,
-                identifier: None,
-                error: Some(e.to_string()),
-            };
-        }
-    };
+        };
 
     let mut label_ids = existing_label_ids;
 

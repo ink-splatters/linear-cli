@@ -185,9 +185,7 @@ fn select_team(teams: &[Team]) -> Result<Team> {
 async fn create_issue_interactive(client: &LinearClient, team: &Team) -> Result<()> {
     println!("\n{}", "Create New Issue".cyan().bold());
 
-    let title: String = Input::new()
-        .with_prompt("Title")
-        .interact_text()?;
+    let title: String = Input::new().with_prompt("Title").interact_text()?;
 
     if title.trim().is_empty() {
         println!("Title cannot be empty.");
@@ -370,9 +368,7 @@ async fn view_issue_interactive(client: &LinearClient) -> Result<()> {
         }
     "#;
 
-    let result = client
-        .query(query, Some(json!({ "id": issue_id })))
-        .await?;
+    let result = client.query(query, Some(json!({ "id": issue_id }))).await?;
     let issue = &result["data"]["issue"];
 
     if issue.is_null() {
@@ -400,7 +396,10 @@ async fn view_issue_interactive(client: &LinearClient) -> Result<()> {
         "State:    {}",
         issue["state"]["name"].as_str().unwrap_or("-")
     );
-    println!("Priority: {}", priority_to_string(issue["priority"].as_i64()));
+    println!(
+        "Priority: {}",
+        priority_to_string(issue["priority"].as_i64())
+    );
     println!(
         "Team:     {}",
         issue["team"]["name"].as_str().unwrap_or("-")
@@ -415,10 +414,7 @@ async fn view_issue_interactive(client: &LinearClient) -> Result<()> {
     let labels = issue["labels"]["nodes"].as_array();
     if let Some(labels) = labels {
         if !labels.is_empty() {
-            let label_names: Vec<&str> = labels
-                .iter()
-                .filter_map(|l| l["name"].as_str())
-                .collect();
+            let label_names: Vec<&str> = labels.iter().filter_map(|l| l["name"].as_str()).collect();
             println!("Labels:   {}", label_names.join(", "));
         }
     }
@@ -453,9 +449,7 @@ async fn update_issue_interactive(client: &LinearClient) -> Result<()> {
         }
     "#;
 
-    let result = client
-        .query(query, Some(json!({ "id": issue_id })))
-        .await?;
+    let result = client.query(query, Some(json!({ "id": issue_id }))).await?;
     let issue = &result["data"]["issue"];
 
     if issue.is_null() {
@@ -467,11 +461,7 @@ async fn update_issue_interactive(client: &LinearClient) -> Result<()> {
     let issue_uuid = issue["id"].as_str().unwrap_or(&issue_id);
     let current_title = issue["title"].as_str().unwrap_or("");
     let identifier = issue["identifier"].as_str().unwrap_or("");
-    println!(
-        "\nCurrent: {} {}",
-        identifier.cyan(),
-        current_title
-    );
+    println!("\nCurrent: {} {}", identifier.cyan(), current_title);
 
     let update_options = vec!["Title", "Priority", "Cancel"];
     let selection = Select::new()

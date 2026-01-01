@@ -138,7 +138,19 @@ pub async fn handle(cmd: IssueCommands, output: OutputFormat) -> Result<()> {
             state,
             assignee,
             labels,
-        } => create_issue(&title, &team, description, priority, state, assignee, labels, output).await,
+        } => {
+            create_issue(
+                &title,
+                &team,
+                description,
+                priority,
+                state,
+                assignee,
+                labels,
+                output,
+            )
+            .await
+        }
         IssueCommands::Update {
             id,
             title,
@@ -148,7 +160,11 @@ pub async fn handle(cmd: IssueCommands, output: OutputFormat) -> Result<()> {
             assignee,
         } => update_issue(&id, title, description, priority, state, assignee, output).await,
         IssueCommands::Delete { id, force } => delete_issue(&id, force).await,
-        IssueCommands::Start { id, checkout, branch } => start_issue(&id, checkout, branch).await,
+        IssueCommands::Start {
+            id,
+            checkout,
+            branch,
+        } => start_issue(&id, checkout, branch).await,
         IssueCommands::Stop { id, unassign } => stop_issue(&id, unassign).await,
     }
 }
@@ -216,7 +232,10 @@ async fn list_issues(
 
     // Handle JSON output
     if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&result["data"]["issues"]["nodes"])?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&result["data"]["issues"]["nodes"])?
+        );
         return Ok(());
     }
 
@@ -307,9 +326,18 @@ async fn get_issue(id: &str, output: OutputFormat) -> Result<()> {
         }
     }
 
-    println!("State:    {}", issue["state"]["name"].as_str().unwrap_or("-"));
-    println!("Priority: {}", priority_to_string(issue["priority"].as_i64()));
-    println!("Team:     {}", issue["team"]["name"].as_str().unwrap_or("-"));
+    println!(
+        "State:    {}",
+        issue["state"]["name"].as_str().unwrap_or("-")
+    );
+    println!(
+        "Priority: {}",
+        priority_to_string(issue["priority"].as_i64())
+    );
+    println!(
+        "Team:     {}",
+        issue["team"]["name"].as_str().unwrap_or("-")
+    );
 
     if let Some(assignee) = issue["assignee"]["name"].as_str() {
         let email = issue["assignee"]["email"].as_str().unwrap_or("");
@@ -334,10 +362,7 @@ async fn get_issue(id: &str, output: OutputFormat) -> Result<()> {
     let labels = issue["labels"]["nodes"].as_array();
     if let Some(labels) = labels {
         if !labels.is_empty() {
-            let label_names: Vec<&str> = labels
-                .iter()
-                .filter_map(|l| l["name"].as_str())
-                .collect();
+            let label_names: Vec<&str> = labels.iter().filter_map(|l| l["name"].as_str()).collect();
             println!("Labels:   {}", label_names.join(", "));
         }
     }
@@ -398,7 +423,9 @@ async fn create_issue(
         }
     "#;
 
-    let result = client.mutate(mutation, Some(json!({ "input": input }))).await?;
+    let result = client
+        .mutate(mutation, Some(json!({ "input": input })))
+        .await?;
 
     if result["data"]["issueCreate"]["success"].as_bool() == Some(true) {
         let issue = &result["data"]["issueCreate"]["issue"];
@@ -528,9 +555,7 @@ async fn delete_issue(id: &str, force: bool) -> Result<()> {
 
 // Git helper functions for start command
 fn run_git_command(args: &[&str]) -> Result<String> {
-    let output = Command::new("git")
-        .args(args)
-        .output()?;
+    let output = Command::new("git").args(args).output()?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -616,9 +641,9 @@ async fn start_issue(id: &str, checkout: bool, custom_branch: Option<String>) ->
         .as_array()
         .unwrap_or(&empty);
 
-    let started_state = states.iter().find(|s| {
-        s["type"].as_str() == Some("started")
-    });
+    let started_state = states
+        .iter()
+        .find(|s| s["type"].as_str() == Some("started"));
 
     let state_id = match started_state {
         Some(s) => s["id"].as_str().unwrap_or(""),
@@ -676,7 +701,13 @@ async fn start_issue(id: &str, checkout: bool, custom_branch: Option<String>) ->
     // Optionally checkout a git branch
     if checkout {
         let branch_name = custom_branch
-            .or_else(|| if linear_branch.is_empty() { None } else { Some(linear_branch) })
+            .or_else(|| {
+                if linear_branch.is_empty() {
+                    None
+                } else {
+                    Some(linear_branch)
+                }
+            })
             .unwrap_or_else(|| generate_branch_name(identifier, title));
 
         println!();
@@ -736,7 +767,11 @@ async fn stop_issue(id: &str, unassign: bool) -> Result<()> {
     let stop_state = states
         .iter()
         .find(|s| s["type"].as_str() == Some("backlog"))
-        .or_else(|| states.iter().find(|s| s["type"].as_str() == Some("unstarted")));
+        .or_else(|| {
+            states
+                .iter()
+                .find(|s| s["type"].as_str() == Some("unstarted"))
+        });
 
     let state_id = match stop_state {
         Some(s) => s["id"].as_str().unwrap_or(""),

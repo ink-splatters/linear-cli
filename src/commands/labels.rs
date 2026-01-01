@@ -58,9 +58,12 @@ struct LabelRow {
 pub async fn handle(cmd: LabelCommands, output: OutputFormat) -> Result<()> {
     match cmd {
         LabelCommands::List { r#type } => list_labels(&r#type, output).await,
-        LabelCommands::Create { name, r#type, color, parent } => {
-            create_label(&name, &r#type, &color, parent, output).await
-        }
+        LabelCommands::Create {
+            name,
+            r#type,
+            color,
+            parent,
+        } => create_label(&name, &r#type, &color, parent, output).await,
         LabelCommands::Delete { id, r#type, force } => delete_label(&id, &r#type, force).await,
     }
 }
@@ -98,18 +101,23 @@ async fn list_labels(label_type: &str, output: OutputFormat) -> Result<()> {
 
     let result = client.query(query, None).await?;
 
-    let key = if label_type == "project" { "projectLabels" } else { "issueLabels" };
+    let key = if label_type == "project" {
+        "projectLabels"
+    } else {
+        "issueLabels"
+    };
 
     // Handle JSON output
     if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&result["data"][key]["nodes"])?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&result["data"][key]["nodes"])?
+        );
         return Ok(());
     }
 
     let empty = vec![];
-    let labels = result["data"][key]["nodes"]
-        .as_array()
-        .unwrap_or(&empty);
+    let labels = result["data"][key]["nodes"].as_array().unwrap_or(&empty);
 
     if labels.is_empty() {
         println!("No {} labels found.", label_type);
@@ -133,7 +141,13 @@ async fn list_labels(label_type: &str, output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
-async fn create_label(name: &str, label_type: &str, color: &str, parent: Option<String>, output: OutputFormat) -> Result<()> {
+async fn create_label(
+    name: &str,
+    label_type: &str,
+    color: &str,
+    parent: Option<String>,
+    output: OutputFormat,
+) -> Result<()> {
     let client = LinearClient::new()?;
 
     let mut input = json!({
@@ -165,10 +179,20 @@ async fn create_label(name: &str, label_type: &str, color: &str, parent: Option<
         "#
     };
 
-    let result = client.mutate(mutation, Some(json!({ "input": input }))).await?;
+    let result = client
+        .mutate(mutation, Some(json!({ "input": input })))
+        .await?;
 
-    let key = if label_type == "project" { "projectLabelCreate" } else { "issueLabelCreate" };
-    let label_key = if label_type == "project" { "projectLabel" } else { "issueLabel" };
+    let key = if label_type == "project" {
+        "projectLabelCreate"
+    } else {
+        "issueLabelCreate"
+    };
+    let label_key = if label_type == "project" {
+        "projectLabel"
+    } else {
+        "issueLabel"
+    };
 
     if result["data"][key]["success"].as_bool() == Some(true) {
         let label = &result["data"][key][label_key];
@@ -179,7 +203,12 @@ async fn create_label(name: &str, label_type: &str, color: &str, parent: Option<
             return Ok(());
         }
 
-        println!("{} Created {} label: {}", "+".green(), label_type, label["name"].as_str().unwrap_or(""));
+        println!(
+            "{} Created {} label: {}",
+            "+".green(),
+            label_type,
+            label["name"].as_str().unwrap_or("")
+        );
         println!("  ID: {}", label["id"].as_str().unwrap_or(""));
     } else {
         anyhow::bail!("Failed to create label");
@@ -190,7 +219,10 @@ async fn create_label(name: &str, label_type: &str, color: &str, parent: Option<
 
 async fn delete_label(id: &str, label_type: &str, force: bool) -> Result<()> {
     if !force {
-        println!("Are you sure you want to delete {} label {}?", label_type, id);
+        println!(
+            "Are you sure you want to delete {} label {}?",
+            label_type, id
+        );
         println!("Use --force to skip this prompt.");
         return Ok(());
     }
@@ -217,7 +249,11 @@ async fn delete_label(id: &str, label_type: &str, force: bool) -> Result<()> {
 
     let result = client.mutate(mutation, Some(json!({ "id": id }))).await?;
 
-    let key = if label_type == "project" { "projectLabelDelete" } else { "issueLabelDelete" };
+    let key = if label_type == "project" {
+        "projectLabelDelete"
+    } else {
+        "issueLabelDelete"
+    };
 
     if result["data"][key]["success"].as_bool() == Some(true) {
         println!("{} Label deleted", "+".green());

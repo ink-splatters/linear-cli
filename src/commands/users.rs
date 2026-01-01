@@ -75,7 +75,9 @@ async fn list_users(team: Option<String>) -> Result<()> {
     };
 
     let result = if let Some(ref team_id) = resolved_team {
-        client.query(query, Some(json!({ "teamId": team_id }))).await?
+        client
+            .query(query, Some(json!({ "teamId": team_id })))
+            .await?
     } else {
         client.query(query, None).await?
     };
@@ -149,8 +151,20 @@ async fn get_me() -> Result<()> {
     }
 
     println!("Email: {}", user["email"].as_str().unwrap_or("-"));
-    println!("Admin: {}", user["admin"].as_bool().map(|b| if b { "Yes" } else { "No" }).unwrap_or("-"));
-    println!("Active: {}", user["active"].as_bool().map(|b| if b { "Yes" } else { "No" }).unwrap_or("-"));
+    println!(
+        "Admin: {}",
+        user["admin"]
+            .as_bool()
+            .map(|b| if b { "Yes" } else { "No" })
+            .unwrap_or("-")
+    );
+    println!(
+        "Active: {}",
+        user["active"]
+            .as_bool()
+            .map(|b| if b { "Yes" } else { "No" })
+            .unwrap_or("-")
+    );
 
     if let Some(created) = user["createdAt"].as_str() {
         println!("Created: {}", created);

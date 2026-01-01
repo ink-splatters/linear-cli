@@ -34,24 +34,29 @@ pub async fn resolve_team_id(client: &LinearClient, team: &str) -> Result<String
         .unwrap_or(&empty);
 
     // First try exact key match (case-insensitive)
-    if let Some(team_data) = teams.iter().find(|t| {
-        t["key"].as_str().map(|k| k.eq_ignore_ascii_case(team)) == Some(true)
-    }) {
+    if let Some(team_data) = teams
+        .iter()
+        .find(|t| t["key"].as_str().map(|k| k.eq_ignore_ascii_case(team)) == Some(true))
+    {
         if let Some(id) = team_data["id"].as_str() {
             return Ok(id.to_string());
         }
     }
 
     // Then try exact name match (case-insensitive)
-    if let Some(team_data) = teams.iter().find(|t| {
-        t["name"].as_str().map(|n| n.eq_ignore_ascii_case(team)) == Some(true)
-    }) {
+    if let Some(team_data) = teams
+        .iter()
+        .find(|t| t["name"].as_str().map(|n| n.eq_ignore_ascii_case(team)) == Some(true))
+    {
         if let Some(id) = team_data["id"].as_str() {
             return Ok(id.to_string());
         }
     }
 
-    anyhow::bail!("Team not found: '{}'. Use 'linear-cli t list' to see available teams.", team)
+    anyhow::bail!(
+        "Team not found: '{}'. Use 'linear-cli t list' to see available teams.",
+        team
+    )
 }
 
 pub struct LinearClient {
@@ -96,4 +101,3 @@ impl LinearClient {
         self.query(mutation, variables).await
     }
 }
-

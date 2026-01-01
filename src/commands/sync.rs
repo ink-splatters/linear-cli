@@ -61,7 +61,10 @@ struct LinearProject {
 #[derive(Debug)]
 enum SyncStatus {
     /// Exists in both local and Linear
-    Synced { local: LocalProject, remote: LinearProject },
+    Synced {
+        local: LocalProject,
+        remote: LinearProject,
+    },
     /// Exists locally but not in Linear
     LocalOnly(LocalProject),
     /// Exists in Linear but not locally
@@ -70,12 +73,16 @@ enum SyncStatus {
 
 pub async fn handle(cmd: SyncCommands) -> Result<()> {
     match cmd {
-        SyncCommands::Status { directory, missing_only } => {
-            status_command(directory, missing_only).await
-        }
-        SyncCommands::Push { directory, team, only, dry_run } => {
-            push_command(directory, team, only, dry_run).await
-        }
+        SyncCommands::Status {
+            directory,
+            missing_only,
+        } => status_command(directory, missing_only).await,
+        SyncCommands::Push {
+            directory,
+            team,
+            only,
+            dry_run,
+        } => push_command(directory, team, only, dry_run).await,
     }
 }
 
@@ -156,23 +163,14 @@ async fn fetch_linear_projects(client: &LinearClient) -> Result<Vec<LinearProjec
 }
 
 /// Compare local projects with Linear projects
-fn compare_projects(
-    local: Vec<LocalProject>,
-    remote: Vec<LinearProject>,
-) -> Vec<SyncStatus> {
+fn compare_projects(local: Vec<LocalProject>, remote: Vec<LinearProject>) -> Vec<SyncStatus> {
     let mut statuses = Vec::new();
 
     // Create a set of remote project names (case-insensitive)
-    let _remote_names: HashSet<String> = remote
-        .iter()
-        .map(|p| p.name.to_lowercase())
-        .collect();
+    let _remote_names: HashSet<String> = remote.iter().map(|p| p.name.to_lowercase()).collect();
 
     // Create a map of local names for quick lookup
-    let local_names: HashSet<String> = local
-        .iter()
-        .map(|p| p.name.to_lowercase())
-        .collect();
+    let local_names: HashSet<String> = local.iter().map(|p| p.name.to_lowercase()).collect();
 
     // Check local projects
     for local_proj in &local {
@@ -222,14 +220,24 @@ async fn status_command(directory: Option<String>, missing_only: bool) -> Result
     let statuses = compare_projects(local_projects, linear_projects);
 
     // Count stats
-    let synced_count = statuses.iter().filter(|s| matches!(s, SyncStatus::Synced { .. })).count();
-    let local_only_count = statuses.iter().filter(|s| matches!(s, SyncStatus::LocalOnly(_))).count();
-    let remote_only_count = statuses.iter().filter(|s| matches!(s, SyncStatus::RemoteOnly(_))).count();
+    let synced_count = statuses
+        .iter()
+        .filter(|s| matches!(s, SyncStatus::Synced { .. }))
+        .count();
+    let local_only_count = statuses
+        .iter()
+        .filter(|s| matches!(s, SyncStatus::LocalOnly(_)))
+        .count();
+    let remote_only_count = statuses
+        .iter()
+        .filter(|s| matches!(s, SyncStatus::RemoteOnly(_)))
+        .count();
 
     // Display results
     if !missing_only {
         // Show synced projects
-        let synced: Vec<_> = statuses.iter()
+        let synced: Vec<_> = statuses
+            .iter()
             .filter_map(|s| match s {
                 SyncStatus::Synced { local, remote } => Some((local, remote)),
                 _ => None,
@@ -239,7 +247,11 @@ async fn status_command(directory: Option<String>, missing_only: bool) -> Result
         if !synced.is_empty() {
             println!("{} {} Synced:", "[OK]".green(), synced.len());
             for (local, _remote) in synced {
-                let git_indicator = if local.has_git { "[git]".dimmed() } else { "".dimmed() };
+                let git_indicator = if local.has_git {
+                    "[git]".dimmed()
+                } else {
+                    "".dimmed()
+                };
                 println!("  {} {} {}", "+".green(), local.name, git_indicator);
             }
             println!();
@@ -247,7 +259,8 @@ async fn status_command(directory: Option<String>, missing_only: bool) -> Result
     }
 
     // Show local-only projects (missing from Linear)
-    let local_only: Vec<_> = statuses.iter()
+    let local_only: Vec<_> = statuses
+        .iter()
         .filter_map(|s| match s {
             SyncStatus::LocalOnly(local) => Some(local),
             _ => None,
@@ -255,17 +268,31 @@ async fn status_command(directory: Option<String>, missing_only: bool) -> Result
         .collect();
 
     if !local_only.is_empty() {
-        println!("{} {} Local only (not in Linear):", "[MISSING]".yellow(), local_only.len());
+        println!(
+            "{} {} Local only (not in Linear):",
+            "[MISSING]".yellow(),
+            local_only.len()
+        );
         for local in local_only {
-            let git_indicator = if local.has_git { "[git]".dimmed() } else { "".dimmed() };
-            println!("  {} {} {}", "!".yellow(), local.name.yellow(), git_indicator);
+            let git_indicator = if local.has_git {
+                "[git]".dimmed()
+            } else {
+                "".dimmed()
+            };
+            println!(
+                "  {} {} {}",
+                "!".yellow(),
+                local.name.yellow(),
+                git_indicator
+            );
         }
         println!();
     }
 
     // Show remote-only projects (not found locally)
     if !missing_only {
-        let remote_only: Vec<_> = statuses.iter()
+        let remote_only: Vec<_> = statuses
+            .iter()
             .filter_map(|s| match s {
                 SyncStatus::RemoteOnly(remote) => Some(remote),
                 _ => None,
@@ -273,7 +300,11 @@ async fn status_command(directory: Option<String>, missing_only: bool) -> Result
             .collect();
 
         if !remote_only.is_empty() {
-            println!("{} {} Linear only (not found locally):", "[REMOTE]".blue(), remote_only.len());
+            println!(
+                "{} {} Linear only (not found locally):",
+                "[REMOTE]".blue(),
+                remote_only.len()
+            );
             for remote in remote_only {
                 println!("  {} {}", "-".blue(), remote.name.blue());
             }
@@ -318,7 +349,10 @@ async fn push_command(
     let team_id = resolve_team_id(&client, &team).await?;
 
     if dry_run {
-        println!("{}", "[DRY RUN] No projects will be created".yellow().bold());
+        println!(
+            "{}",
+            "[DRY RUN] No projects will be created".yellow().bold()
+        );
         println!();
     }
 
@@ -338,7 +372,8 @@ async fn push_command(
     let statuses = compare_projects(local_projects, linear_projects);
 
     // Get local-only projects
-    let mut to_create: Vec<&LocalProject> = statuses.iter()
+    let mut to_create: Vec<&LocalProject> = statuses
+        .iter()
         .filter_map(|s| match s {
             SyncStatus::LocalOnly(local) => Some(local),
             _ => None,
@@ -356,7 +391,10 @@ async fn push_command(
     }
 
     if to_create.is_empty() {
-        println!("{} All local projects already exist in Linear", "[OK]".green());
+        println!(
+            "{} All local projects already exist in Linear",
+            "[OK]".green()
+        );
         return Ok(());
     }
 
@@ -437,7 +475,9 @@ async fn create_linear_project(
         }
     "#;
 
-    let result = client.mutate(mutation, Some(json!({ "input": input }))).await?;
+    let result = client
+        .mutate(mutation, Some(json!({ "input": input })))
+        .await?;
 
     if result["data"]["projectCreate"]["success"].as_bool() == Some(true) {
         let url = result["data"]["projectCreate"]["project"]["url"]
@@ -459,21 +499,17 @@ mod tests {
 
     #[test]
     fn test_compare_projects_synced() {
-        let local = vec![
-            LocalProject {
-                name: "my-project".to_string(),
-                path: "/code/my-project".to_string(),
-                has_git: true,
-            },
-        ];
+        let local = vec![LocalProject {
+            name: "my-project".to_string(),
+            path: "/code/my-project".to_string(),
+            has_git: true,
+        }];
 
-        let remote = vec![
-            LinearProject {
-                id: "123".to_string(),
-                name: "my-project".to_string(),
-                url: Some("https://linear.app/...".to_string()),
-            },
-        ];
+        let remote = vec![LinearProject {
+            id: "123".to_string(),
+            name: "my-project".to_string(),
+            url: Some("https://linear.app/...".to_string()),
+        }];
 
         let statuses = compare_projects(local, remote);
         assert_eq!(statuses.len(), 1);
@@ -482,13 +518,11 @@ mod tests {
 
     #[test]
     fn test_compare_projects_local_only() {
-        let local = vec![
-            LocalProject {
-                name: "new-project".to_string(),
-                path: "/code/new-project".to_string(),
-                has_git: false,
-            },
-        ];
+        let local = vec![LocalProject {
+            name: "new-project".to_string(),
+            path: "/code/new-project".to_string(),
+            has_git: false,
+        }];
 
         let remote = vec![];
 
@@ -501,13 +535,11 @@ mod tests {
     fn test_compare_projects_remote_only() {
         let local = vec![];
 
-        let remote = vec![
-            LinearProject {
-                id: "456".to_string(),
-                name: "archived-project".to_string(),
-                url: None,
-            },
-        ];
+        let remote = vec![LinearProject {
+            id: "456".to_string(),
+            name: "archived-project".to_string(),
+            url: None,
+        }];
 
         let statuses = compare_projects(local, remote);
         assert_eq!(statuses.len(), 1);
@@ -516,25 +548,24 @@ mod tests {
 
     #[test]
     fn test_compare_projects_case_insensitive() {
-        let local = vec![
-            LocalProject {
-                name: "MyProject".to_string(),
-                path: "/code/MyProject".to_string(),
-                has_git: true,
-            },
-        ];
+        let local = vec![LocalProject {
+            name: "MyProject".to_string(),
+            path: "/code/MyProject".to_string(),
+            has_git: true,
+        }];
 
-        let remote = vec![
-            LinearProject {
-                id: "789".to_string(),
-                name: "myproject".to_string(),
-                url: None,
-            },
-        ];
+        let remote = vec![LinearProject {
+            id: "789".to_string(),
+            name: "myproject".to_string(),
+            url: None,
+        }];
 
         let statuses = compare_projects(local, remote);
         // Should match case-insensitively
-        let synced = statuses.iter().filter(|s| matches!(s, SyncStatus::Synced { .. })).count();
+        let synced = statuses
+            .iter()
+            .filter(|s| matches!(s, SyncStatus::Synced { .. }))
+            .count();
         assert_eq!(synced, 1);
     }
 }
