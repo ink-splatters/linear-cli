@@ -128,6 +128,32 @@ enum ConfigCommands {
     },
     /// Show current configuration
     Show,
+    /// Add a new workspace
+    #[command(alias = "add")]
+    WorkspaceAdd {
+        /// Workspace name
+        name: String,
+        /// API key for this workspace
+        api_key: String,
+    },
+    /// List all workspaces
+    #[command(alias = "list")]
+    WorkspaceList,
+    /// Switch to a different workspace
+    #[command(alias = "use")]
+    WorkspaceSwitch {
+        /// Workspace name to switch to
+        name: String,
+    },
+    /// Show current workspace
+    #[command(alias = "current")]
+    WorkspaceCurrent,
+    /// Remove a workspace
+    #[command(alias = "rm")]
+    WorkspaceRemove {
+        /// Workspace name to remove
+        name: String,
+    },
 }
 
 #[tokio::main]
@@ -157,6 +183,21 @@ async fn main() -> Result<()> {
             }
             ConfigCommands::Show => {
                 config::show_config()?;
+            }
+            ConfigCommands::WorkspaceAdd { name, api_key } => {
+                config::workspace_add(&name, &api_key)?;
+            }
+            ConfigCommands::WorkspaceList => {
+                config::workspace_list()?;
+            }
+            ConfigCommands::WorkspaceSwitch { name } => {
+                config::workspace_switch(&name)?;
+            }
+            ConfigCommands::WorkspaceCurrent => {
+                config::workspace_current()?;
+            }
+            ConfigCommands::WorkspaceRemove { name } => {
+                config::workspace_remove(&name)?;
             }
         },
     }

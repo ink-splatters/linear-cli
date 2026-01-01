@@ -50,8 +50,10 @@ struct LocalProject {
 /// Represents a Linear project for comparison
 #[derive(Debug, Clone)]
 struct LinearProject {
+    #[allow(dead_code)]
     id: String,
     name: String,
+    #[allow(dead_code)]
     url: Option<String>,
 }
 
@@ -161,7 +163,7 @@ fn compare_projects(
     let mut statuses = Vec::new();
 
     // Create a set of remote project names (case-insensitive)
-    let remote_names: HashSet<String> = remote
+    let _remote_names: HashSet<String> = remote
         .iter()
         .map(|p| p.name.to_lowercase())
         .collect();

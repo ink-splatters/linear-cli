@@ -1,6 +1,5 @@
 use anyhow::Result;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::config;
@@ -98,54 +97,3 @@ impl LinearClient {
     }
 }
 
-// Response types
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Project {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub summary: Option<String>,
-    pub icon: Option<String>,
-    pub color: Option<String>,
-    pub url: Option<String>,
-    pub state: Option<String>,
-    #[serde(default)]
-    pub labels: Vec<ProjectLabel>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ProjectLabel {
-    pub id: String,
-    pub name: String,
-    pub color: Option<String>,
-    pub parent: Option<ParentLabel>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ParentLabel {
-    pub name: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Issue {
-    pub id: String,
-    pub identifier: String,
-    pub title: String,
-    pub description: Option<String>,
-    pub priority: Option<i32>,
-    pub state: Option<IssueState>,
-    pub url: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct IssueState {
-    pub name: String,
-    pub color: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Team {
-    pub id: String,
-    pub name: String,
-    pub key: String,
-}
