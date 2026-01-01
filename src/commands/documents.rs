@@ -91,7 +91,7 @@ async fn list_documents(project_id: Option<String>, include_archived: bool) -> R
     let client = LinearClient::new()?;
 
     let query = r#"
-        query($projectId: String, $includeArchived: Boolean) {
+        query($includeArchived: Boolean) {
             documents(first: 100, includeArchived: $includeArchived) {
                 nodes {
                     id
@@ -103,10 +103,7 @@ async fn list_documents(project_id: Option<String>, include_archived: bool) -> R
         }
     "#;
 
-    let mut variables = json!({ "includeArchived": include_archived });
-    if let Some(ref pid) = project_id {
-        variables["projectId"] = json!(pid);
-    }
+    let variables = json!({ "includeArchived": include_archived });
 
     let result = client.query(query, Some(variables)).await?;
 
