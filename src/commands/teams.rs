@@ -1,10 +1,11 @@
 use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
+use crate::cache::{Cache, CacheType};
 use crate::OutputFormat;
 
 #[derive(Subcommand)]
@@ -37,35 +38,43 @@ pub async fn handle(cmd: TeamCommands, output: OutputFormat) -> Result<()> {
 }
 
 async fn list_teams(output: OutputFormat) -> Result<()> {
-    let client = LinearClient::new()?;
+    let cache = Cache::new()?;
 
-    let query = r#"
-        query {
-            teams(first: 100) {
-                nodes {
-                    id
-                    name
-                    key
+    // Try to get teams from cache first
+    let teams_data: Value = if let Some(cached) = cache.get(CacheType::Teams) {
+        cached
+    } else {
+        // Fetch from API
+        let client = LinearClient::new()?;
+
+        let query = r#"
+            query {
+                teams(first: 100) {
+                    nodes {
+                        id
+                        name
+                        key
+                    }
                 }
             }
-        }
-    "#;
+        "#;
 
-    let result = client.query(query, None).await?;
+        let result = client.query(query, None).await?;
+        let data = result["data"]["teams"]["nodes"].clone();
+
+        // Cache the result
+        let _ = cache.set(CacheType::Teams, data.clone());
+        data
+    };
 
     // Handle JSON output
     if matches!(output, OutputFormat::Json) {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&result["data"]["teams"]["nodes"])?
-        );
+        println!("{}", serde_json::to_string_pretty(&teams_data)?);
         return Ok(());
     }
 
     let empty = vec![];
-    let teams = result["data"]["teams"]["nodes"]
-        .as_array()
-        .unwrap_or(&empty);
+    let teams = teams_data.as_array().unwrap_or(&empty);
 
     if teams.is_empty() {
         println!("No teams found.");

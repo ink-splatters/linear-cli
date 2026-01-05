@@ -1,10 +1,11 @@
 use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tabled::{Table, Tabled};
 
 use crate::api::{resolve_team_id, LinearClient};
+use crate::cache::{Cache, CacheType};
 
 #[derive(Subcommand)]
 pub enum StatusCommands {
@@ -48,41 +49,62 @@ pub async fn handle(cmd: StatusCommands) -> Result<()> {
 
 async fn list_statuses(team: &str) -> Result<()> {
     let client = LinearClient::new()?;
+    let cache = Cache::new()?;
 
     // Resolve team key/name to UUID
     let team_id = resolve_team_id(&client, team).await?;
 
-    let query = r#"
-        query($teamId: String!) {
-            team(id: $teamId) {
-                id
-                name
-                states {
-                    nodes {
+    // Try to get statuses from cache first
+    let (team_name, states): (String, Vec<Value>) =
+        if let Some(cached) = cache.get_keyed(CacheType::Statuses, &team_id) {
+            let name = cached["team_name"].as_str().unwrap_or("").to_string();
+            let states_data = cached["states"].as_array().cloned().unwrap_or_default();
+            (name, states_data)
+        } else {
+            // Fetch from API
+            let query = r#"
+                query($teamId: String!) {
+                    team(id: $teamId) {
                         id
                         name
-                        type
-                        color
-                        position
-                        description
+                        states {
+                            nodes {
+                                id
+                                name
+                                type
+                                color
+                                position
+                                description
+                            }
+                        }
                     }
                 }
+            "#;
+
+            let result = client
+                .query(query, Some(json!({ "teamId": team_id })))
+                .await?;
+            let team_data = &result["data"]["team"];
+
+            if team_data.is_null() {
+                anyhow::bail!("Team not found: {}", team);
             }
-        }
-    "#;
 
-    let result = client
-        .query(query, Some(json!({ "teamId": team_id })))
-        .await?;
-    let team_data = &result["data"]["team"];
+            let name = team_data["name"].as_str().unwrap_or("").to_string();
+            let states_data = team_data["states"]["nodes"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
 
-    if team_data.is_null() {
-        anyhow::bail!("Team not found: {}", team);
-    }
+            // Cache the result
+            let cache_data = json!({
+                "team_name": name,
+                "states": states_data
+            });
+            let _ = cache.set_keyed(CacheType::Statuses, &team_id, cache_data);
 
-    let team_name = team_data["name"].as_str().unwrap_or("");
-    let empty = vec![];
-    let states = team_data["states"]["nodes"].as_array().unwrap_or(&empty);
+            (name, states_data)
+        };
 
     if states.is_empty() {
         println!("No statuses found for team '{}'.", team_name);
