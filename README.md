@@ -355,6 +355,26 @@ Configuration is stored at:
 - **Linux/macOS:** `~/.config/linear-cli/config.toml`
 - **Windows:** `%APPDATA%\linear-cli\config.toml`
 
+### Environment Variable Override
+
+You can override the configured API key using the `LINEAR_API_KEY` environment variable. This is useful for:
+
+- **CI/CD pipelines** - Set API key via environment without modifying config files
+- **Multi-workspace scripts** - Run commands against different workspaces without switching
+- **Agent processes** - Spawn isolated processes with their own API key context
+- **Security** - Avoid storing API keys in config files on shared systems
+
+```bash
+# Override API key for a single command
+LINEAR_API_KEY=lin_api_xxx linear-cli issues list
+
+# Set for entire shell session
+export LINEAR_API_KEY=lin_api_xxx
+linear-cli issues list
+```
+
+The environment variable takes precedence over the config file when set.
+
 ## Claude Code Integration
 
 Add linear-cli to your Claude Code instructions:
