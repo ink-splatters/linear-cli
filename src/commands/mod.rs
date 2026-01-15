@@ -15,5 +15,6 @@ pub mod sync;
 pub mod teams;
 pub mod templates;
 pub mod time;
+pub mod uploads;
 pub mod users;
 pub mod workspace;

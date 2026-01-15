@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::Client;
 use serde_json::{json, Value};
 
@@ -99,5 +99,38 @@ impl LinearClient {
 
     pub async fn mutate(&self, mutation: &str, variables: Option<Value>) -> Result<Value> {
         self.query(mutation, variables).await
+    }
+
+    /// Fetch raw bytes from a URL with authorization header (for Linear uploads)
+    pub async fn fetch_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", &self.api_key)
+            .send()
+            .await
+            .context("Failed to connect to Linear uploads")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_msg = match status.as_u16() {
+                401 => "Authentication failed - check your API key".to_string(),
+                403 => "Access denied to this upload".to_string(),
+                404 => "Upload not found".to_string(),
+                _ => format!(
+                    "HTTP {} {}",
+                    status.as_u16(),
+                    status.canonical_reason().unwrap_or("Unknown error")
+                ),
+            };
+            anyhow::bail!("{}", error_msg);
+        }
+
+        let bytes: Vec<u8> = response
+            .bytes()
+            .await
+            .context("Failed to read response body")?
+            .to_vec();
+        Ok(bytes)
     }
 }

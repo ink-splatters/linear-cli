@@ -7,7 +7,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use commands::{
     bulk, comments, cycles, documents, git, interactive, issues, labels, notifications, projects,
-    search, statuses, sync, teams, templates, time, users,
+    search, statuses, sync, teams, templates, time, uploads, users,
 };
 
 /// Output format for command results
@@ -216,6 +216,16 @@ enum Commands {
         #[command(subcommand)]
         action: time::TimeCommands,
     },
+    /// Fetch uploads from Linear with authentication
+    #[command(alias = "up")]
+    #[command(after_help = r#"EXAMPLES:
+    linear uploads fetch URL                # Output to stdout (for piping)
+    linear up fetch URL -o file.png         # Save to file
+    linear up fetch URL | base64            # Pipe to another tool"#)]
+    Uploads {
+        #[command(subcommand)]
+        action: uploads::UploadCommands,
+    },
     /// Interactive mode - TUI for browsing and managing issues
     #[command(alias = "int")]
     #[command(after_help = r#"EXAMPLES:
@@ -301,6 +311,7 @@ async fn main() -> Result<()> {
         Commands::Notifications { action } => notifications::handle(action).await?,
         Commands::Templates { action } => templates::handle(action).await?,
         Commands::Time { action } => time::handle(action).await?,
+        Commands::Uploads { action } => uploads::handle(action).await?,
         Commands::Interactive => interactive::run().await?,
         Commands::Config { action } => match action {
             ConfigCommands::SetKey { key } => {
