@@ -41,3 +41,18 @@ URLs follow pattern: `https://uploads.linear.app/{org}/{upload}/{filename}`
 - Requires valid Linear API key
 - Use `-f` / `--file` to specify output filename
 - Without `-f`, outputs raw bytes to stdout (for piping)
+
+## When to Use Each Mode
+
+**Use `-f` (file) when you need to view the image:**
+```bash
+# Download to /tmp, then use Read tool to view
+linear-cli up fetch "https://uploads.linear.app/..." -f /tmp/screenshot.png
+# Then: Read tool on /tmp/screenshot.png (Claude is multimodal)
+```
+
+**Use stdout when piping to other CLI tools:**
+```bash
+# Pipe to base64, imagemagick, etc.
+linear-cli up fetch "https://uploads.linear.app/..." | base64
+```
