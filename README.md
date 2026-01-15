@@ -104,6 +104,7 @@ Config stored at `~/.config/linear-cli/config.toml` (Linux/macOS) or `%APPDATA%\
 - [Usage Examples](docs/examples.md) - Detailed command examples
 - [Workflows](docs/workflows.md) - Common workflow patterns
 - [AI Agent Integration](docs/ai-agents.md) - Setup for Claude Code, Cursor, OpenAI Codex
+- [Agent Skills](docs/skills.md) - Pre-built skills for Claude Code and OpenAI Codex
 - [Shell Completions](docs/shell-completions.md) - Tab completion setup
 
 ## Comparison with Other CLIs
