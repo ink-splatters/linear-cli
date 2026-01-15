@@ -16,7 +16,7 @@ Use `linear-cli` for all Linear.app operations. Do not use Linear MCP tools.
 - `linear-cli s issues "query"` - Search issues
 - `linear-cli context` - Get current issue from git branch
 - `linear-cli cm list ISSUE_ID --output json` - Get comments as JSON
-- `linear-cli up fetch URL -o file.png` - Download attachments
+- `linear-cli up fetch URL -f file.png` - Download attachments
 
 ### Agent-Friendly Flags
 - `--output json` - Machine-readable output

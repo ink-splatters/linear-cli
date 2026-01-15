@@ -12,10 +12,10 @@ Download attachments and images from Linear issues using `linear-cli`.
 
 ```bash
 # Download image/attachment to file
-linear-cli up fetch "https://uploads.linear.app/..." -o image.png
+linear-cli up fetch "https://uploads.linear.app/..." -f image.png
 
 # Download screenshot
-linear-cli up fetch "https://uploads.linear.app/abc/def/screenshot.png" -o /tmp/screenshot.png
+linear-cli up fetch "https://uploads.linear.app/abc/def/screenshot.png" -f /tmp/screenshot.png
 ```
 
 ## Output to Stdout
@@ -39,5 +39,5 @@ URLs follow pattern: `https://uploads.linear.app/{org}/{upload}/{filename}`
 ## Tips
 
 - Requires valid Linear API key
-- Use `-o` to specify output filename
-- Without `-o`, outputs raw bytes to stdout
+- Use `-f` / `--file` to specify output filename
+- Without `-f`, outputs raw bytes to stdout (for piping)
