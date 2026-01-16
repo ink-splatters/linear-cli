@@ -102,19 +102,19 @@ impl LinearClient {
         let result: Value = response.json().await?;
 
         if !status.is_success() {
-        let retry_after = headers
-            .get("retry-after")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.parse::<u64>().ok());
-        let request_id = headers
-            .get("x-request-id")
-            .and_then(|v| v.to_str().ok())
-            .map(|v| v.to_string());
-        let details = json!({
-            "status": status.as_u16(),
-            "reason": status.canonical_reason().unwrap_or("Unknown error"),
-            "request_id": request_id,
-        });
+            let retry_after = headers
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok());
+            let request_id = headers
+                .get("x-request-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.to_string());
+            let details = json!({
+                "status": status.as_u16(),
+                "reason": status.canonical_reason().unwrap_or("Unknown error"),
+                "request_id": request_id,
+            });
             let err = match status.as_u16() {
                 401 => CliError::new(3, "Authentication failed - check your API key"),
                 403 => CliError::new(3, "Access denied - insufficient permissions"),

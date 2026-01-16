@@ -6,10 +6,10 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::OutputFormat;
 use crate::cache::CacheOptions;
 use crate::error::CliError;
 use crate::pagination::PaginationOptions;
+use crate::OutputFormat;
 
 #[derive(Debug, Clone, Copy, Default, ValueEnum, PartialEq)]
 pub enum SortOrder {
@@ -105,7 +105,10 @@ fn parse_filter(input: &str) -> Result<FilterExpr> {
     } else if let Some((left, right)) = trimmed.split_once('=') {
         (left, FilterOp::Eq, right)
     } else {
-        anyhow::bail!("Invalid filter '{}'. Use field=value, field!=value, or field~=value", input);
+        anyhow::bail!(
+            "Invalid filter '{}'. Use field=value, field!=value, or field~=value",
+            input
+        );
     };
 
     let path_parts: Vec<String> = path

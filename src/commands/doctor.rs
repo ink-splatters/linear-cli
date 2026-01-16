@@ -10,8 +10,12 @@ pub async fn run(output: &OutputOptions, check_api: bool) -> Result<()> {
     let config_path = config::config_file_path()?;
     let config_data = config::load_config()?;
     let profile = config::current_profile().ok();
-    let env_key = std::env::var("LINEAR_API_KEY").ok().filter(|k| !k.is_empty());
-    let env_profile = std::env::var("LINEAR_CLI_PROFILE").ok().filter(|p| !p.is_empty());
+    let env_key = std::env::var("LINEAR_API_KEY")
+        .ok()
+        .filter(|k| !k.is_empty());
+    let env_profile = std::env::var("LINEAR_CLI_PROFILE")
+        .ok()
+        .filter(|p| !p.is_empty());
     let cache_dir = cache::cache_dir_path()?;
 
     let configured = profile
@@ -62,10 +66,7 @@ pub async fn run(output: &OutputOptions, check_api: bool) -> Result<()> {
         env_profile.unwrap_or_else(|| "none".to_string())
     );
     println!("Cache dir: {}", cache_dir.display());
-    println!(
-        "Cache TTL: {}s",
-        output.cache.effective_ttl_seconds()
-    );
+    println!("Cache TTL: {}s", output.cache.effective_ttl_seconds());
     if let Some(api_ok) = api_ok {
         println!("API check: {}", if api_ok { "ok" } else { "failed" });
         if let Some(err) = api_error {

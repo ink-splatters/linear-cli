@@ -214,7 +214,6 @@ async fn fetch_linear_projects(
     Ok(projects)
 }
 
-
 /// Compare local projects with Linear projects
 fn compare_projects(local: Vec<LocalProject>, remote: Vec<LinearProject>) -> Vec<SyncStatus> {
     let mut statuses = Vec::new();

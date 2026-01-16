@@ -11,7 +11,7 @@ use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 use commands::{
-    auth, bulk, comments, cycles, documents, doctor, git, interactive, issues, labels,
+    auth, bulk, comments, cycles, doctor, documents, git, interactive, issues, labels,
     notifications, projects, search, statuses, sync, teams, templates, time, uploads, users,
 };
 use error::CliError;
@@ -602,9 +602,7 @@ async fn main() -> Result<()> {
             "schema_version": "1.0",
             "schema_file": "docs/json/schema.json",
         });
-        if matches!(cli.output, OutputFormat::Ndjson) {
-            println!("{}", serde_json::to_string(&schema)?);
-        } else if cli.compact {
+        if matches!(cli.output, OutputFormat::Ndjson) || cli.compact {
             println!("{}", serde_json::to_string(&schema)?);
         } else {
             println!("{}", serde_json::to_string_pretty(&schema)?);

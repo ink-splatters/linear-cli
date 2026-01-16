@@ -95,7 +95,9 @@ pub fn get_api_key() -> Result<String> {
 
     // Fall back to config file
     let config = load_config()?;
-    let profile = std::env::var("LINEAR_CLI_PROFILE").ok().filter(|p| !p.is_empty());
+    let profile = std::env::var("LINEAR_CLI_PROFILE")
+        .ok()
+        .filter(|p| !p.is_empty());
     let current = profile.or(config.current.clone()).context(
         "No workspace selected. Run: linear config workspace-add <name> or set LINEAR_CLI_PROFILE",
     )?;
@@ -112,7 +114,9 @@ pub fn config_file_path() -> Result<PathBuf> {
 
 pub fn current_profile() -> Result<String> {
     let config = load_config()?;
-    let profile = std::env::var("LINEAR_CLI_PROFILE").ok().filter(|p| !p.is_empty());
+    let profile = std::env::var("LINEAR_CLI_PROFILE")
+        .ok()
+        .filter(|p| !p.is_empty());
     profile.or(config.current).context("No workspace selected")
 }
 

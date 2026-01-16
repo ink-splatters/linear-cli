@@ -108,7 +108,6 @@ impl Cache {
         Self::with_ttl(DEFAULT_TTL_SECONDS)
     }
 
-
     /// Create a new cache instance with custom TTL in seconds
     pub fn with_ttl(ttl_seconds: u64) -> Result<Self> {
         let cache_dir = Self::cache_dir()?;

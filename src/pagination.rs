@@ -88,7 +88,9 @@ pub async fn paginate_nodes(
             variables.remove("after");
         }
 
-        let result = client.query(query, Some(Value::Object(variables.clone()))).await?;
+        let result = client
+            .query(query, Some(Value::Object(variables.clone())))
+            .await?;
 
         let nodes = get_path(&result, nodes_path)
             .and_then(|v| v.as_array())

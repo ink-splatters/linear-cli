@@ -43,9 +43,7 @@ pub async fn handle(cmd: AuthCommands, output: &OutputOptions) -> Result<()> {
 async fn login(key: Option<String>, validate: bool, output: &OutputOptions) -> Result<()> {
     let key = match key {
         Some(key) => key,
-        None => Password::new()
-            .with_prompt("Linear API key")
-            .interact()?,
+        None => Password::new().with_prompt("Linear API key").interact()?,
     };
 
     if validate {
@@ -106,8 +104,12 @@ async fn logout(force: bool, output: &OutputOptions) -> Result<()> {
 async fn status(validate: bool, output: &OutputOptions) -> Result<()> {
     let config_data = config::load_config()?;
     let profile = config::current_profile().ok();
-    let env_key = std::env::var("LINEAR_API_KEY").ok().filter(|k| !k.is_empty());
-    let env_profile = std::env::var("LINEAR_CLI_PROFILE").ok().filter(|p| !p.is_empty());
+    let env_key = std::env::var("LINEAR_API_KEY")
+        .ok()
+        .filter(|k| !k.is_empty());
+    let env_profile = std::env::var("LINEAR_CLI_PROFILE")
+        .ok()
+        .filter(|p| !p.is_empty());
 
     let configured = profile
         .as_ref()
@@ -180,7 +182,5 @@ fn resolve_profile_for_write() -> Result<String> {
         }
     }
     let config_data = config::load_config()?;
-    Ok(config_data
-        .current
-        .unwrap_or_else(|| "default".to_string()))
+    Ok(config_data.current.unwrap_or_else(|| "default".to_string()))
 }
