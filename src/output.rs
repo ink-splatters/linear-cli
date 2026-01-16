@@ -132,6 +132,23 @@ fn extract_sort_key(value: &Value, key: &str) -> String {
     }
 }
 
+pub fn sort_values(values: &mut Vec<Value>, key: &str, order: SortOrder) {
+    let mut indexed: Vec<(usize, Value)> = values.drain(..).enumerate().collect();
+    indexed.sort_by(|(idx_a, a), (idx_b, b)| {
+        let ord = compare_json_field(a, b, key);
+        let ord = match order {
+            SortOrder::Asc => ord,
+            SortOrder::Desc => ord.reverse(),
+        };
+        if ord == Ordering::Equal {
+            idx_a.cmp(idx_b)
+        } else {
+            ord
+        }
+    });
+    *values = indexed.into_iter().map(|(_, v)| v).collect();
+}
+
 fn select_fields(value: &Value, fields: &[String]) -> Value {
     match value {
         Value::Array(items) => {
