@@ -6,6 +6,8 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
+use crate::text::truncate;
+use crate::display_options;
 
 #[derive(Debug, Clone)]
 struct Team {
@@ -48,7 +50,7 @@ impl std::fmt::Display for MenuAction {
     }
 }
 
-pub async fn run() -> Result<()> {
+pub async fn run(default_team: Option<String>) -> Result<()> {
     let term = Term::stdout();
     let client = LinearClient::new()?;
 
@@ -63,7 +65,10 @@ pub async fn run() -> Result<()> {
     }
 
     // Select initial team
-    let mut current_team = select_team(&teams)?;
+    let mut current_team = match default_team {
+        Some(team) => select_team_by_name_or_key(&teams, &team)?,
+        None => select_team(&teams)?,
+    };
     println!(
         "\n{} Selected team: {} ({})",
         "+".green(),
@@ -304,18 +309,12 @@ async fn list_issues_interactive(client: &LinearClient, team: &Team) -> Result<(
         return Ok(());
     }
 
+    let width = display_options().max_width(50);
     let rows: Vec<IssueRow> = issues
         .iter()
         .map(|issue| IssueRow {
             identifier: issue["identifier"].as_str().unwrap_or("").to_string(),
-            title: {
-                let t = issue["title"].as_str().unwrap_or("");
-                if t.len() > 50 {
-                    format!("{}...", &t[..47])
-                } else {
-                    t.to_string()
-                }
-            },
+            title: truncate(issue["title"].as_str().unwrap_or(""), width),
             state: issue["state"]["name"].as_str().unwrap_or("-").to_string(),
             priority: priority_to_string(issue["priority"].as_i64()),
         })
@@ -383,11 +382,7 @@ async fn view_issue_interactive(client: &LinearClient) -> Result<()> {
 
     if let Some(desc) = issue["description"].as_str() {
         if !desc.is_empty() {
-            let truncated = if desc.len() > 200 {
-                format!("{}...", &desc[..197])
-            } else {
-                desc.to_string()
-            };
+            let truncated = truncate(desc, display_options().max_width(200));
             println!("\n{}\n", truncated);
         }
     }
@@ -422,6 +417,24 @@ async fn view_issue_interactive(client: &LinearClient) -> Result<()> {
     println!("\nURL: {}", issue["url"].as_str().unwrap_or("-"));
 
     Ok(())
+}
+
+fn select_team_by_name_or_key(teams: &[Team], value: &str) -> Result<Team> {
+    let needle = value.trim().to_lowercase();
+    if needle.is_empty() {
+        return select_team(teams);
+    }
+    if let Some(team) = teams.iter().find(|t| {
+        t.id.eq_ignore_ascii_case(&needle)
+            || t.key.eq_ignore_ascii_case(&needle)
+            || t.name.eq_ignore_ascii_case(&needle)
+    }) {
+        return Ok(team.clone());
+    }
+    anyhow::bail!(
+        "Team not found: '{}'. Use `linear teams list` to see available teams.",
+        value
+    )
 }
 
 async fn update_issue_interactive(client: &LinearClient) -> Result<()> {

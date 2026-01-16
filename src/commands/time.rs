@@ -5,7 +5,9 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
-use crate::OutputFormat;
+use crate::output::{print_json, OutputOptions};
+use crate::text::truncate;
+use crate::display_options;
 
 #[derive(Subcommand)]
 pub enum TimeCommands {
@@ -60,7 +62,7 @@ struct TimeEntryRow {
     user: String,
 }
 
-pub async fn handle(cmd: TimeCommands, output: OutputFormat) -> Result<()> {
+pub async fn handle(cmd: TimeCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         TimeCommands::Log {
             issue,
@@ -208,7 +210,7 @@ async fn log_time(issue_id: &str, duration: &str, description: Option<String>) -
 async fn list_time_entries(
     issue_filter: Option<String>,
     limit: u32,
-    output: OutputFormat,
+    output: &OutputOptions,
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
@@ -265,8 +267,8 @@ async fn list_time_entries(
             };
 
             if let Some(entries) = entries.as_array() {
-                if matches!(output, OutputFormat::Json) {
-                    println!("{}", serde_json::to_string_pretty(&entries)?);
+                if output.is_json() {
+                    print_json(&serde_json::Value::Array(entries.clone()), &output.json)?;
                     return Ok(());
                 }
 
@@ -275,13 +277,18 @@ async fn list_time_entries(
                     return Ok(());
                 }
 
+                let issue_width = display_options().max_width(20);
+                let user_width = display_options().max_width(30);
                 let rows: Vec<TimeEntryRow> = entries
                     .iter()
                     .map(|e| {
                         let duration_mins = e["duration"].as_i64().unwrap_or(0) as i32;
                         TimeEntryRow {
                             id: e["id"].as_str().unwrap_or("").chars().take(8).collect(),
-                            issue: e["issue"]["identifier"].as_str().unwrap_or("-").to_string(),
+                            issue: truncate(
+                                e["issue"]["identifier"].as_str().unwrap_or("-"),
+                                issue_width,
+                            ),
                             duration: format_duration(duration_mins),
                             date: e["createdAt"]
                                 .as_str()
@@ -289,7 +296,10 @@ async fn list_time_entries(
                                 .chars()
                                 .take(10)
                                 .collect(),
-                            user: e["user"]["name"].as_str().unwrap_or("-").to_string(),
+                            user: truncate(
+                                e["user"]["name"].as_str().unwrap_or("-"),
+                                user_width,
+                            ),
                         }
                     })
                     .collect();

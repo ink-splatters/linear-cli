@@ -4,7 +4,9 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
-use crate::OutputFormat;
+use crate::output::{print_json, OutputOptions};
+use crate::text::truncate;
+use crate::display_options;
 
 #[derive(Subcommand)]
 pub enum SearchCommands {
@@ -58,7 +60,7 @@ struct ProjectRow {
     id: String,
 }
 
-pub async fn handle(cmd: SearchCommands, output: OutputFormat) -> Result<()> {
+pub async fn handle(cmd: SearchCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         SearchCommands::Issues {
             query,
@@ -77,7 +79,7 @@ async fn search_issues(
     query: &str,
     limit: u32,
     include_archived: bool,
-    output: OutputFormat,
+    output: &OutputOptions,
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
@@ -113,8 +115,8 @@ async fn search_issues(
         .as_array()
         .unwrap_or(&empty);
 
-    if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&issues)?);
+    if output.is_json() {
+        print_json(&serde_json::json!(issues), &output.json)?;
         return Ok(());
     }
 
@@ -123,6 +125,7 @@ async fn search_issues(
         return Ok(());
     }
 
+    let width = display_options().max_width(50);
     let rows: Vec<IssueRow> = issues
         .iter()
         .map(|issue| {
@@ -137,7 +140,7 @@ async fn search_issues(
 
             IssueRow {
                 identifier: issue["identifier"].as_str().unwrap_or("").to_string(),
-                title: truncate_string(issue["title"].as_str().unwrap_or(""), 50),
+                title: truncate(issue["title"].as_str().unwrap_or(""), width),
                 state: issue["state"]["name"].as_str().unwrap_or("-").to_string(),
                 priority,
                 id: issue["id"].as_str().unwrap_or("").to_string(),
@@ -156,7 +159,7 @@ async fn search_projects(
     query: &str,
     limit: u32,
     include_archived: bool,
-    output: OutputFormat,
+    output: &OutputOptions,
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
@@ -188,8 +191,8 @@ async fn search_projects(
         .as_array()
         .unwrap_or(&empty);
 
-    if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&projects)?);
+    if output.is_json() {
+        print_json(&serde_json::json!(projects), &output.json)?;
         return Ok(());
     }
 
@@ -198,6 +201,8 @@ async fn search_projects(
         return Ok(());
     }
 
+    let name_width = display_options().max_width(40);
+    let label_width = display_options().max_width(40);
     let rows: Vec<ProjectRow> = projects
         .iter()
         .map(|p| {
@@ -209,12 +214,12 @@ async fn search_projects(
                 .collect();
 
             ProjectRow {
-                name: p["name"].as_str().unwrap_or("").to_string(),
+                name: truncate(p["name"].as_str().unwrap_or(""), name_width),
                 status: p["status"]["name"].as_str().unwrap_or("-").to_string(),
                 labels: if labels.is_empty() {
                     "-".to_string()
                 } else {
-                    labels.join(", ")
+                    truncate(&labels.join(", "), label_width)
                 },
                 id: p["id"].as_str().unwrap_or("").to_string(),
             }
@@ -226,12 +231,4 @@ async fn search_projects(
     println!("\n{} projects found", projects.len());
 
     Ok(())
-}
-
-fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len - 3])
-    }
 }

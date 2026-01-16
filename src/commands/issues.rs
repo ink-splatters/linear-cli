@@ -1,13 +1,16 @@
 use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::io::{self, BufRead};
 use std::process::Command;
 use tabled::{Table, Tabled};
 
 use crate::api::{resolve_team_id, LinearClient};
-use crate::{AgentOptions, OutputFormat};
+use crate::output::{print_json, OutputOptions};
+use crate::text::truncate;
+use crate::display_options;
+use crate::AgentOptions;
 
 use super::templates;
 
@@ -68,6 +71,9 @@ pub enum IssueCommands {
         /// Issue description (markdown). Use "-" to read from stdin.
         #[arg(short, long)]
         description: Option<String>,
+        /// JSON input for issue fields. Use "-" to read from stdin.
+        #[arg(long)]
+        data: Option<String>,
         /// Priority (0=none, 1=urgent, 2=high, 3=normal, 4=low)
         #[arg(short, long)]
         priority: Option<i32>,
@@ -102,6 +108,9 @@ pub enum IssueCommands {
         /// New description
         #[arg(short, long)]
         description: Option<String>,
+        /// JSON input for issue fields. Use "-" to read from stdin.
+        #[arg(long)]
+        data: Option<String>,
         /// New priority (0=none, 1=urgent, 2=high, 3=normal, 4=low)
         #[arg(short, long)]
         priority: Option<i32>,
@@ -167,7 +176,7 @@ struct IssueRow {
 
 pub async fn handle(
     cmd: IssueCommands,
-    output: OutputFormat,
+    output: &OutputOptions,
     agent_opts: AgentOptions,
 ) -> Result<()> {
     match cmd {
@@ -210,6 +219,7 @@ pub async fn handle(
             title,
             team,
             description,
+            data,
             priority,
             state,
             assignee,
@@ -233,9 +243,24 @@ pub async fn handle(
             };
 
             // Team from CLI arg takes precedence, then template, then error
-            let final_team = team.or(tpl.team.clone()).ok_or_else(|| {
-                anyhow::anyhow!("--team is required (or use a template with a default team)")
-            })?;
+            let data_json = read_json_data(data.as_deref())?;
+            let data_team = data_json.as_ref().and_then(|v| {
+                v.get("team")
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string())
+            });
+            let data_team_id = data_json.as_ref().and_then(|v| {
+                v.get("teamId")
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string())
+            });
+            let final_team = team
+                .or(tpl.team.clone())
+                .or(data_team)
+                .or(data_team_id)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("--team is required (or use a template with a default team)")
+                })?;
 
             // Build title with optional prefix from template
             let final_title = if let Some(ref prefix) = tpl.title_prefix {
@@ -246,6 +271,10 @@ pub async fn handle(
 
             // Merge template defaults with CLI args (CLI takes precedence)
             // Support reading description from stdin if "-" is passed
+            if data.as_deref() == Some("-") && description.as_deref() == Some("-") {
+                anyhow::bail!("--data - and --description - cannot both read from stdin");
+            }
+
             let final_description = match description.as_deref() {
                 Some("-") => {
                     let stdin = io::stdin();
@@ -264,6 +293,7 @@ pub async fn handle(
             create_issue(
                 &final_title,
                 &final_team,
+                data_json,
                 final_description,
                 final_priority,
                 state,
@@ -279,10 +309,16 @@ pub async fn handle(
             id,
             title,
             description,
+            data,
             priority,
             state,
             assignee,
         } => {
+            if data.as_deref() == Some("-") && description.as_deref() == Some("-") {
+                anyhow::bail!("--data - and --description - cannot both read from stdin");
+            }
+
+            let data_json = read_json_data(data.as_deref())?;
             // Support reading description from stdin if "-" is passed
             let final_description = match description.as_deref() {
                 Some("-") => {
@@ -297,6 +333,7 @@ pub async fn handle(
                 &id,
                 title,
                 final_description,
+                data_json,
                 priority,
                 state,
                 assignee,
@@ -334,7 +371,7 @@ async fn list_issues(
     project: Option<String>,
     include_archived: bool,
     limit: u32,
-    output: OutputFormat,
+    output: &OutputOptions,
     _agent_opts: AgentOptions,
 ) -> Result<()> {
     let client = LinearClient::new()?;
@@ -384,11 +421,8 @@ async fn list_issues(
     let result = client.query(query, Some(variables)).await?;
 
     // Handle JSON output
-    if matches!(output, OutputFormat::Json) {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&result["data"]["issues"]["nodes"])?
-        );
+    if output.is_json() {
+        print_json(&result["data"]["issues"]["nodes"], &output.json)?;
         return Ok(());
     }
 
@@ -402,18 +436,12 @@ async fn list_issues(
         return Ok(());
     }
 
+    let width = display_options().max_width(50);
     let rows: Vec<IssueRow> = issues
         .iter()
         .map(|issue| IssueRow {
             identifier: issue["identifier"].as_str().unwrap_or("").to_string(),
-            title: {
-                let t = issue["title"].as_str().unwrap_or("");
-                if t.len() > 50 {
-                    format!("{}...", &t[..47])
-                } else {
-                    t.to_string()
-                }
-            },
+            title: truncate(issue["title"].as_str().unwrap_or(""), width),
             state: issue["state"]["name"].as_str().unwrap_or("-").to_string(),
             priority: priority_to_string(issue["priority"].as_i64()),
             assignee: issue["assignee"]["name"]
@@ -431,7 +459,7 @@ async fn list_issues(
 }
 
 /// Get multiple issues (supports batch fetching)
-async fn get_issues(ids: &[String], output: OutputFormat) -> Result<()> {
+async fn get_issues(ids: &[String], output: &OutputOptions) -> Result<()> {
     // Handle single ID (most common case)
     if ids.len() == 1 {
         return get_issue(&ids[0], output).await;
@@ -470,7 +498,7 @@ async fn get_issues(ids: &[String], output: OutputFormat) -> Result<()> {
     let results = futures::future::join_all(futures).await;
 
     // JSON output: array of issues
-    if matches!(output, OutputFormat::Json) {
+    if output.is_json() {
         let issues: Vec<_> = results
             .iter()
             .filter_map(|(_, r)| {
@@ -484,7 +512,7 @@ async fn get_issues(ids: &[String], output: OutputFormat) -> Result<()> {
                 })
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&issues)?);
+        print_json(&serde_json::json!(issues), &output.json)?;
         return Ok(());
     }
 
@@ -512,7 +540,7 @@ async fn get_issues(ids: &[String], output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
-async fn get_issue(id: &str, output: OutputFormat) -> Result<()> {
+async fn get_issue(id: &str, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -544,8 +572,8 @@ async fn get_issue(id: &str, output: OutputFormat) -> Result<()> {
     }
 
     // Handle JSON output
-    if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(issue)?);
+    if output.is_json() {
+        print_json(issue, &output.json)?;
         return Ok(());
     }
 
@@ -612,12 +640,13 @@ async fn get_issue(id: &str, output: OutputFormat) -> Result<()> {
 async fn create_issue(
     title: &str,
     team: &str,
+    data_json: Option<Value>,
     description: Option<String>,
     priority: Option<i32>,
     state: Option<String>,
     assignee: Option<String>,
     labels: Vec<String>,
-    output: OutputFormat,
+    output: &OutputOptions,
     agent_opts: AgentOptions,
     dry_run: bool,
 ) -> Result<()> {
@@ -632,10 +661,14 @@ async fn create_issue(
     // Build the title with optional prefix from template
     let final_title = title.to_string();
 
-    let mut input = json!({
-        "title": final_title,
-        "teamId": team_id
-    });
+    let mut input = match data_json {
+        Some(Value::Object(map)) => Value::Object(map),
+        Some(_) => anyhow::bail!("--data must be a JSON object"),
+        None => json!({}),
+    };
+
+    input["title"] = json!(final_title);
+    input["teamId"] = json!(team_id);
 
     // CLI args override template values
     if let Some(ref desc) = description {
@@ -667,10 +700,9 @@ async fn create_issue(
 
     // Dry run: show what would be created without actually creating
     if dry_run {
-        if matches!(output, OutputFormat::Json) {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&json!({
+        if output.is_json() {
+            print_json(
+                &json!({
                     "dry_run": true,
                     "would_create": {
                         "title": final_title,
@@ -682,8 +714,9 @@ async fn create_issue(
                         "assignee": assignee,
                         "labels": labels,
                     }
-                }))?
-            );
+                }),
+                &output.json,
+            )?;
         } else {
             println!("{}", "[DRY RUN] Would create issue:".yellow().bold());
             println!("  Title:       {}", final_title);
@@ -741,8 +774,8 @@ async fn create_issue(
         }
 
         // Handle JSON output
-        if matches!(output, OutputFormat::Json) {
-            println!("{}", serde_json::to_string_pretty(issue)?);
+        if output.is_json() {
+            print_json(issue, &output.json)?;
             return Ok(());
         }
 
@@ -773,15 +806,20 @@ async fn update_issue(
     id: &str,
     title: Option<String>,
     description: Option<String>,
+    data_json: Option<Value>,
     priority: Option<i32>,
     state: Option<String>,
     assignee: Option<String>,
-    output: OutputFormat,
+    output: &OutputOptions,
     agent_opts: AgentOptions,
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
-    let mut input = json!({});
+    let mut input = match data_json {
+        Some(Value::Object(map)) => Value::Object(map),
+        Some(_) => anyhow::bail!("--data must be a JSON object"),
+        None => json!({}),
+    };
 
     if let Some(t) = title {
         input["title"] = json!(t);
@@ -833,8 +871,8 @@ async fn update_issue(
         }
 
         // Handle JSON output
-        if matches!(output, OutputFormat::Json) {
-            println!("{}", serde_json::to_string_pretty(issue)?);
+        if output.is_json() {
+            print_json(issue, &output.json)?;
             return Ok(());
         }
 
@@ -855,6 +893,19 @@ async fn update_issue(
     }
 
     Ok(())
+}
+
+fn read_json_data(data: Option<&str>) -> Result<Option<Value>> {
+    let Some(data) = data else { return Ok(None) };
+    let raw = if data == "-" {
+        let stdin = io::stdin();
+        let lines: Vec<String> = stdin.lock().lines().map_while(Result::ok).collect();
+        lines.join("\n")
+    } else {
+        data.to_string()
+    };
+    let value: Value = serde_json::from_str(&raw)?;
+    Ok(Some(value))
 }
 
 async fn delete_issue(id: &str, force: bool, agent_opts: AgentOptions) -> Result<()> {

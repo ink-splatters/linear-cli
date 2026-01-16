@@ -6,7 +6,9 @@ use tabled::{Table, Tabled};
 
 use crate::api::{resolve_team_id, LinearClient};
 use crate::cache::{Cache, CacheType};
-use crate::OutputFormat;
+use crate::output::{print_json, OutputOptions};
+use crate::text::truncate;
+use crate::display_options;
 
 #[derive(Subcommand)]
 pub enum StatusCommands {
@@ -41,14 +43,14 @@ struct StatusRow {
     id: String,
 }
 
-pub async fn handle(cmd: StatusCommands, output: OutputFormat) -> Result<()> {
+pub async fn handle(cmd: StatusCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         StatusCommands::List { team } => list_statuses(&team, output).await,
         StatusCommands::Get { id, team } => get_status(&id, &team, output).await,
     }
 }
 
-async fn list_statuses(team: &str, output: OutputFormat) -> Result<()> {
+async fn list_statuses(team: &str, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
     let cache = Cache::new()?;
 
@@ -108,22 +110,22 @@ async fn list_statuses(team: &str, output: OutputFormat) -> Result<()> {
         };
 
     if states.is_empty() {
-        if output == OutputFormat::Json {
-            println!("{}", json!({"statuses": [], "team": team_name}));
+        if output.is_json() {
+            print_json(&json!({"statuses": [], "team": team_name}), &output.json)?;
             return Ok(());
         }
         println!("No statuses found for team '{}'.", team_name);
         return Ok(());
     }
 
-    if output == OutputFormat::Json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
+    if output.is_json() {
+        print_json(
+            &json!({
                 "team": team_name,
                 "statuses": states
-            }))?
-        );
+            }),
+            &output.json,
+        )?;
         return Ok(());
     }
 
@@ -133,6 +135,7 @@ async fn list_statuses(team: &str, output: OutputFormat) -> Result<()> {
     );
     println!("{}", "-".repeat(50));
 
+    let width = display_options().max_width(30);
     let rows: Vec<StatusRow> = states
         .iter()
         .map(|s| {
@@ -147,7 +150,7 @@ async fn list_statuses(team: &str, output: OutputFormat) -> Result<()> {
             };
 
             StatusRow {
-                name: s["name"].as_str().unwrap_or("").to_string(),
+                name: truncate(s["name"].as_str().unwrap_or(""), width),
                 status_type: type_colored,
                 color: s["color"].as_str().unwrap_or("").to_string(),
                 position: s["position"]
@@ -166,7 +169,7 @@ async fn list_statuses(team: &str, output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
-async fn get_status(id: &str, team: &str, output: OutputFormat) -> Result<()> {
+async fn get_status(id: &str, team: &str, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     // Resolve team key/name to UUID
@@ -212,8 +215,8 @@ async fn get_status(id: &str, team: &str, output: OutputFormat) -> Result<()> {
 
     match status {
         Some(s) => {
-            if output == OutputFormat::Json {
-                println!("{}", serde_json::to_string_pretty(s)?);
+            if output.is_json() {
+                print_json(s, &output.json)?;
                 return Ok(());
             }
 

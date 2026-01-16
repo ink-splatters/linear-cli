@@ -5,7 +5,9 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::{resolve_team_id, LinearClient};
-use crate::OutputFormat;
+use crate::output::{print_json, OutputOptions};
+use crate::text::truncate;
+use crate::display_options;
 
 #[derive(Subcommand)]
 pub enum CycleCommands {
@@ -45,14 +47,14 @@ struct CycleRow {
     id: String,
 }
 
-pub async fn handle(cmd: CycleCommands, output: OutputFormat) -> Result<()> {
+pub async fn handle(cmd: CycleCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         CycleCommands::List { team, all } => list_cycles(&team, all, output).await,
         CycleCommands::Current { team } => current_cycle(&team, output).await,
     }
 }
 
-async fn list_cycles(team: &str, include_all: bool, output: OutputFormat) -> Result<()> {
+async fn list_cycles(team: &str, include_all: bool, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     // Resolve team key/name to UUID
@@ -88,8 +90,8 @@ async fn list_cycles(team: &str, include_all: bool, output: OutputFormat) -> Res
         anyhow::bail!("Team not found: {}", team);
     }
 
-    if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&team_data)?);
+    if output.is_json() {
+        print_json(&team_data, &output.json)?;
         return Ok(());
     }
 
@@ -102,6 +104,7 @@ async fn list_cycles(team: &str, include_all: bool, output: OutputFormat) -> Res
         return Ok(());
     }
 
+    let width = display_options().max_width(30);
     let rows: Vec<CycleRow> = cycles
         .iter()
         .filter(|c| {
@@ -122,7 +125,7 @@ async fn list_cycles(team: &str, include_all: bool, output: OutputFormat) -> Res
             };
 
             CycleRow {
-                name: c["name"].as_str().unwrap_or("-").to_string(),
+                name: truncate(c["name"].as_str().unwrap_or("-"), width),
                 number: c["number"]
                     .as_i64()
                     .map(|n| n.to_string())
@@ -160,7 +163,7 @@ async fn list_cycles(team: &str, include_all: bool, output: OutputFormat) -> Res
     Ok(())
 }
 
-async fn current_cycle(team: &str, output: OutputFormat) -> Result<()> {
+async fn current_cycle(team: &str, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     // Resolve team key/name to UUID
@@ -200,8 +203,8 @@ async fn current_cycle(team: &str, output: OutputFormat) -> Result<()> {
         anyhow::bail!("Team not found: {}", team);
     }
 
-    if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&team_data)?);
+    if output.is_json() {
+        print_json(&team_data, &output.json)?;
         return Ok(());
     }
 
@@ -241,7 +244,10 @@ async fn current_cycle(team: &str, output: OutputFormat) -> Result<()> {
             println!("\n{}", "Issues in this cycle:".bold());
             for issue in issues {
                 let identifier = issue["identifier"].as_str().unwrap_or("");
-                let title = issue["title"].as_str().unwrap_or("");
+                let title = truncate(
+                    issue["title"].as_str().unwrap_or(""),
+                    display_options().max_width(50),
+                );
                 let state = issue["state"]["name"].as_str().unwrap_or("");
                 let state_type = issue["state"]["type"].as_str().unwrap_or("");
 

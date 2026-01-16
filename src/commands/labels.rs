@@ -5,7 +5,9 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
-use crate::OutputFormat;
+use crate::output::{print_json, OutputOptions};
+use crate::text::truncate;
+use crate::display_options;
 
 #[derive(Subcommand)]
 pub enum LabelCommands {
@@ -68,7 +70,7 @@ struct LabelRow {
     id: String,
 }
 
-pub async fn handle(cmd: LabelCommands, output: OutputFormat) -> Result<()> {
+pub async fn handle(cmd: LabelCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         LabelCommands::List { r#type } => list_labels(&r#type, output).await,
         LabelCommands::Create {
@@ -81,7 +83,7 @@ pub async fn handle(cmd: LabelCommands, output: OutputFormat) -> Result<()> {
     }
 }
 
-async fn list_labels(label_type: &str, output: OutputFormat) -> Result<()> {
+async fn list_labels(label_type: &str, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = if label_type == "project" {
@@ -121,11 +123,8 @@ async fn list_labels(label_type: &str, output: OutputFormat) -> Result<()> {
     };
 
     // Handle JSON output
-    if matches!(output, OutputFormat::Json) {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&result["data"][key]["nodes"])?
-        );
+    if output.is_json() {
+        print_json(&result["data"][key]["nodes"], &output.json)?;
         return Ok(());
     }
 
@@ -137,11 +136,12 @@ async fn list_labels(label_type: &str, output: OutputFormat) -> Result<()> {
         return Ok(());
     }
 
+    let width = display_options().max_width(30);
     let rows: Vec<LabelRow> = labels
         .iter()
         .map(|l| LabelRow {
-            name: l["name"].as_str().unwrap_or("").to_string(),
-            group: l["parent"]["name"].as_str().unwrap_or("-").to_string(),
+            name: truncate(l["name"].as_str().unwrap_or(""), width),
+            group: truncate(l["parent"]["name"].as_str().unwrap_or("-"), width),
             color: l["color"].as_str().unwrap_or("").to_string(),
             id: l["id"].as_str().unwrap_or("").to_string(),
         })
@@ -159,7 +159,7 @@ async fn create_label(
     label_type: &str,
     color: &str,
     parent: Option<String>,
-    output: OutputFormat,
+    output: &OutputOptions,
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
@@ -211,8 +211,8 @@ async fn create_label(
         let label = &result["data"][key][label_key];
 
         // Handle JSON output
-        if matches!(output, OutputFormat::Json) {
-            println!("{}", serde_json::to_string_pretty(label)?);
+        if output.is_json() {
+            print_json(label, &output.json)?;
             return Ok(());
         }
 

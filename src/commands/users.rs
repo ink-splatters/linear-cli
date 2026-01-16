@@ -6,7 +6,9 @@ use tabled::{Table, Tabled};
 
 use crate::api::{resolve_team_id, LinearClient};
 use crate::cache::{Cache, CacheType};
-use crate::OutputFormat;
+use crate::output::{print_json, OutputOptions};
+use crate::text::truncate;
+use crate::display_options;
 
 #[derive(Subcommand)]
 pub enum UserCommands {
@@ -31,14 +33,14 @@ struct UserRow {
     id: String,
 }
 
-pub async fn handle(cmd: UserCommands, output: OutputFormat) -> Result<()> {
+pub async fn handle(cmd: UserCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         UserCommands::List { team } => list_users(team, output).await,
         UserCommands::Me => get_me(output).await,
     }
 }
 
-async fn list_users(team: Option<String>, output: OutputFormat) -> Result<()> {
+async fn list_users(team: Option<String>, output: &OutputOptions) -> Result<()> {
     let cache = Cache::new()?;
 
     // Only use cache for full user list (no team filter)
@@ -97,8 +99,8 @@ async fn list_users(team: Option<String>, output: OutputFormat) -> Result<()> {
         }
     };
 
-    if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&users)?);
+    if output.is_json() {
+        print_json(&serde_json::json!(users), &output.json)?;
         return Ok(());
     }
 
@@ -107,11 +109,13 @@ async fn list_users(team: Option<String>, output: OutputFormat) -> Result<()> {
         return Ok(());
     }
 
+    let name_width = display_options().max_width(30);
+    let email_width = display_options().max_width(40);
     let rows: Vec<UserRow> = users
         .iter()
         .map(|u| UserRow {
-            name: u["name"].as_str().unwrap_or("").to_string(),
-            email: u["email"].as_str().unwrap_or("").to_string(),
+            name: truncate(u["name"].as_str().unwrap_or(""), name_width),
+            email: truncate(u["email"].as_str().unwrap_or(""), email_width),
             id: u["id"].as_str().unwrap_or("").to_string(),
         })
         .collect();
@@ -123,7 +127,7 @@ async fn list_users(team: Option<String>, output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
-async fn get_me(output: OutputFormat) -> Result<()> {
+async fn get_me(output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -149,8 +153,8 @@ async fn get_me(output: OutputFormat) -> Result<()> {
         anyhow::bail!("Could not fetch current user");
     }
 
-    if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&user)?);
+    if output.is_json() {
+        print_json(&user, &output.json)?;
         return Ok(());
     }
 

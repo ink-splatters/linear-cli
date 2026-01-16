@@ -6,6 +6,8 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::api::LinearClient;
+use crate::display_options;
+use crate::text::truncate;
 
 /// Version control system type
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -297,6 +299,7 @@ fn generate_jj_description(identifier: &str, title: &str, url: &str) -> String {
 
 async fn checkout_issue(issue_id: &str, custom_branch: Option<String>, vcs: Vcs) -> Result<()> {
     let (identifier, title, linear_branch, url) = get_issue_info(issue_id).await?;
+    let title_width = display_options().max_width(50);
 
     let branch_name = custom_branch
         .or(if linear_branch.is_empty() {
@@ -309,7 +312,7 @@ async fn checkout_issue(issue_id: &str, custom_branch: Option<String>, vcs: Vcs)
     println!(
         "{} {} {}",
         identifier.cyan(),
-        title.dimmed(),
+        truncate(&title, title_width).dimmed(),
         format!("({})", vcs).dimmed()
     );
 
@@ -326,7 +329,7 @@ async fn checkout_issue(issue_id: &str, custom_branch: Option<String>, vcs: Vcs)
             }
 
             let current = get_current_branch(vcs)?;
-            println!("{} Now on branch: {}", "✓".green(), current);
+            println!("{} Now on branch: {}", "+".green(), current);
         }
         Vcs::Jj => {
             // For jj, we create a new change with the issue info in the description
@@ -347,7 +350,7 @@ async fn checkout_issue(issue_id: &str, custom_branch: Option<String>, vcs: Vcs)
             }
 
             let current = get_current_branch(vcs)?;
-            println!("{} Now on change: {}", "✓".green(), current);
+            println!("{} Now on change: {}", "+".green(), current);
         }
     }
 
@@ -356,11 +359,12 @@ async fn checkout_issue(issue_id: &str, custom_branch: Option<String>, vcs: Vcs)
 
 async fn show_branch(issue_id: &str, vcs: Vcs) -> Result<()> {
     let (identifier, title, linear_branch, url) = get_issue_info(issue_id).await?;
+    let title_width = display_options().max_width(50);
 
     println!(
         "{} {} {}",
         identifier.cyan().bold(),
-        title,
+        truncate(&title, title_width),
         format!("({})", vcs).dimmed()
     );
     println!("{}", "-".repeat(50));
@@ -377,9 +381,9 @@ async fn show_branch(issue_id: &str, vcs: Vcs) -> Result<()> {
         Vcs::Git => {
             // Check if either branch exists locally
             if branch_exists(&linear_branch, vcs) {
-                println!("\n{} Linear branch exists locally", "✓".green());
+                println!("\n{} Linear branch exists locally", "+".green());
             } else if branch_exists(&generated, vcs) {
-                println!("\n{} Generated branch exists locally", "✓".green());
+                println!("\n{} Generated branch exists locally", "+".green());
             } else {
                 println!("\n{} No local branch found for this issue", "!".yellow());
             }
@@ -387,9 +391,9 @@ async fn show_branch(issue_id: &str, vcs: Vcs) -> Result<()> {
         Vcs::Jj => {
             // Check if bookmark exists
             if branch_exists(&linear_branch, vcs) {
-                println!("\n{} Linear bookmark exists", "✓".green());
+                println!("\n{} Linear bookmark exists", "+".green());
             } else if branch_exists(&generated, vcs) {
-                println!("\n{} Generated bookmark exists", "✓".green());
+                println!("\n{} Generated bookmark exists", "+".green());
             } else {
                 println!("\n{} No bookmark found for this issue", "!".yellow());
             }
@@ -401,6 +405,7 @@ async fn show_branch(issue_id: &str, vcs: Vcs) -> Result<()> {
 
 async fn create_branch(issue_id: &str, custom_branch: Option<String>, vcs: Vcs) -> Result<()> {
     let (identifier, title, linear_branch, url) = get_issue_info(issue_id).await?;
+    let title_width = display_options().max_width(50);
 
     let branch_name = custom_branch
         .or(if linear_branch.is_empty() {
@@ -413,7 +418,7 @@ async fn create_branch(issue_id: &str, custom_branch: Option<String>, vcs: Vcs) 
     println!(
         "{} {} {}",
         identifier.cyan(),
-        title.dimmed(),
+        truncate(&title, title_width).dimmed(),
         format!("({})", vcs).dimmed()
     );
 
@@ -426,7 +431,7 @@ async fn create_branch(issue_id: &str, custom_branch: Option<String>, vcs: Vcs) 
 
             // Create branch without checking out
             run_git_command(&["branch", &branch_name])?;
-            println!("{} Created branch: {}", "✓".green(), branch_name);
+            println!("{} Created branch: {}", "+".green(), branch_name);
         }
         Vcs::Jj => {
             if branch_exists(&branch_name, vcs) {
@@ -442,7 +447,7 @@ async fn create_branch(issue_id: &str, custom_branch: Option<String>, vcs: Vcs) 
             // Go back to original change
             run_jj_command(&["prev"])?;
 
-            println!("{} Created bookmark: {}", "✓".green(), branch_name);
+            println!("{} Created bookmark: {}", "+".green(), branch_name);
         }
     }
 
@@ -452,6 +457,7 @@ async fn create_branch(issue_id: &str, custom_branch: Option<String>, vcs: Vcs) 
 async fn show_commits(limit: usize, vcs: Vcs) -> Result<()> {
     match vcs {
         Vcs::Git => {
+            let subj_width = display_options().max_width(60);
             println!("{}", "Commits with Linear references:".cyan().bold());
             println!("{}", "-".repeat(50));
 
@@ -485,6 +491,7 @@ async fn show_commits(limit: usize, vcs: Vcs) -> Result<()> {
                     // Try to extract issue ID
                     let issue_id = extract_linear_issue(&full_message);
                     if let Some(id) = issue_id {
+                        let subject = truncate(subject, subj_width);
                         println!(
                             "{} {} {}",
                             hash.yellow(),
@@ -492,9 +499,11 @@ async fn show_commits(limit: usize, vcs: Vcs) -> Result<()> {
                             format!("[{}]", id).cyan()
                         );
                     } else {
+                        let subject = truncate(subject, subj_width);
                         println!("{} {}", hash.yellow(), subject);
                     }
                 } else {
+                    let subject = truncate(subject, subj_width);
                     println!("{} {}", hash.dimmed(), subject);
                 }
             }
@@ -502,6 +511,7 @@ async fn show_commits(limit: usize, vcs: Vcs) -> Result<()> {
             Ok(())
         }
         Vcs::Jj => {
+            let desc_width = display_options().max_width(60);
             println!("{}", "Commits with Linear issue trailers:".cyan().bold());
             println!("{}", "-".repeat(50));
 
@@ -548,11 +558,11 @@ async fn show_commits(limit: usize, vcs: Vcs) -> Result<()> {
                     println!(
                         "{} {} {}",
                         change_id.yellow(),
-                        description,
+                        truncate(description, desc_width),
                         format!("[{}]", issue_id).cyan()
                     );
                 } else {
-                    println!("{} {}", change_id.dimmed(), description);
+                    println!("{} {}", change_id.dimmed(), truncate(description, desc_width));
                 }
             }
 
@@ -574,12 +584,20 @@ fn run_gh_command(args: &[&str]) -> Result<String> {
 
 async fn create_pr(issue_id: &str, base: &str, draft: bool, web: bool) -> Result<()> {
     let (identifier, title, _branch_name, url) = get_issue_info(issue_id).await?;
+    let title_width = display_options().max_width(60);
 
     let pr_title = format!("[{}] {}", identifier, title);
     let pr_body = format!("Linear: {}", url);
 
-    println!("{} {}", identifier.cyan(), title.dimmed());
-    println!("Creating PR with title: {}", pr_title.green());
+    println!(
+        "{} {}",
+        identifier.cyan(),
+        truncate(&title, title_width).dimmed()
+    );
+    println!(
+        "Creating PR with title: {}",
+        truncate(&pr_title, title_width).green()
+    );
 
     let mut args = vec![
         "pr", "create", "--title", &pr_title, "--body", &pr_body, "--base", base,
@@ -596,9 +614,9 @@ async fn create_pr(issue_id: &str, base: &str, draft: bool, web: bool) -> Result
     let result = run_gh_command(&args)?;
 
     if !result.is_empty() {
-        println!("{} PR created: {}", "✓".green(), result);
+        println!("{} PR created: {}", "+".green(), result);
     } else {
-        println!("{} PR created successfully!", "✓".green());
+        println!("{} PR created successfully!", "+".green());
     }
 
     Ok(())

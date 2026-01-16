@@ -5,7 +5,9 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
-use crate::OutputFormat;
+use crate::output::{print_json, OutputOptions};
+use crate::text::truncate;
+use crate::display_options;
 
 #[derive(Subcommand)]
 pub enum NotificationCommands {
@@ -45,7 +47,7 @@ struct NotificationRow {
     id: String,
 }
 
-pub async fn handle(cmd: NotificationCommands, output: OutputFormat) -> Result<()> {
+pub async fn handle(cmd: NotificationCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         NotificationCommands::List { all, limit } => list_notifications(all, limit, output).await,
         NotificationCommands::Read { id } => mark_as_read(&id).await,
@@ -69,7 +71,7 @@ fn format_notification_type(notification_type: &str) -> String {
     }
 }
 
-async fn list_notifications(include_all: bool, limit: u32, output: OutputFormat) -> Result<()> {
+async fn list_notifications(include_all: bool, limit: u32, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -118,8 +120,9 @@ async fn list_notifications(include_all: bool, limit: u32, output: OutputFormat)
             .collect()
     };
 
-    if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&filtered)?);
+    if output.is_json() {
+        let filtered_json: Vec<_> = filtered.iter().map(|v| (*v).clone()).collect();
+        print_json(&serde_json::json!(filtered_json), &output.json)?;
         return Ok(());
     }
 
@@ -145,6 +148,7 @@ async fn list_notifications(include_all: bool, limit: u32, output: OutputFormat)
     );
     println!("{}", "-".repeat(60));
 
+    let width = display_options().max_width(40);
     let rows: Vec<NotificationRow> = filtered
         .iter()
         .map(|n| {
@@ -152,11 +156,7 @@ async fn list_notifications(include_all: bool, limit: u32, output: OutputFormat)
             let issue_identifier = n["issue"]["identifier"].as_str().unwrap_or("-");
             let issue_title = n["issue"]["title"].as_str().unwrap_or("");
 
-            let truncated_title = if issue_title.len() > 40 {
-                format!("{}...", issue_title.chars().take(37).collect::<String>())
-            } else {
-                issue_title.to_string()
-            };
+            let truncated_title = truncate(issue_title, width);
 
             let created_at = n["createdAt"]
                 .as_str()
@@ -308,7 +308,7 @@ async fn mark_all_as_read() -> Result<()> {
     Ok(())
 }
 
-async fn show_count(output: OutputFormat) -> Result<()> {
+async fn show_count(output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -333,11 +333,8 @@ async fn show_count(output: OutputFormat) -> Result<()> {
         .filter(|n| n["readAt"].is_null())
         .count();
 
-    if matches!(output, OutputFormat::Json) {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({ "count": unread_count }))?
-        );
+    if output.is_json() {
+        print_json(&json!({ "count": unread_count }), &output.json)?;
         return Ok(());
     }
 

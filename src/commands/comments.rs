@@ -5,7 +5,9 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
-use crate::OutputFormat;
+use crate::output::{print_json, OutputOptions};
+use crate::text::truncate;
+use crate::display_options;
 
 #[derive(Subcommand)]
 pub enum CommentCommands {
@@ -40,7 +42,7 @@ struct CommentRow {
     id: String,
 }
 
-pub async fn handle(cmd: CommentCommands, output: OutputFormat) -> Result<()> {
+pub async fn handle(cmd: CommentCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         CommentCommands::List { issue_id } => list_comments(&issue_id, output).await,
         CommentCommands::Create {
@@ -51,7 +53,7 @@ pub async fn handle(cmd: CommentCommands, output: OutputFormat) -> Result<()> {
     }
 }
 
-async fn list_comments(issue_id: &str, output: OutputFormat) -> Result<()> {
+async fn list_comments(issue_id: &str, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -83,8 +85,8 @@ async fn list_comments(issue_id: &str, output: OutputFormat) -> Result<()> {
     }
 
     // JSON output - return raw data for LLM consumption
-    if matches!(output, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&issue)?);
+    if output.is_json() {
+        print_json(issue, &output.json)?;
         return Ok(());
     }
 
@@ -92,7 +94,7 @@ async fn list_comments(issue_id: &str, output: OutputFormat) -> Result<()> {
     let title = issue["title"].as_str().unwrap_or("");
 
     println!("{} {}", identifier.bold(), title);
-    println!("{}", "─".repeat(50));
+    println!("{}", "-".repeat(50));
 
     let empty = vec![];
     let comments = issue["comments"]["nodes"].as_array().unwrap_or(&empty);
@@ -102,15 +104,12 @@ async fn list_comments(issue_id: &str, output: OutputFormat) -> Result<()> {
         return Ok(());
     }
 
+    let width = display_options().max_width(60);
     let rows: Vec<CommentRow> = comments
         .iter()
         .map(|c| {
             let body = c["body"].as_str().unwrap_or("");
-            let truncated_body = if body.len() > 60 {
-                format!("{}...", body.chars().take(60).collect::<String>())
-            } else {
-                body.to_string()
-            };
+            let truncated_body = truncate(body, width);
 
             let created_at = c["createdAt"]
                 .as_str()
@@ -174,7 +173,7 @@ async fn create_comment(issue_id: &str, body: &str, parent_id: Option<String>) -
 
         println!(
             "{} Comment added to {} {}",
-            "✓".green(),
+            "+".green(),
             issue_identifier,
             issue_title
         );

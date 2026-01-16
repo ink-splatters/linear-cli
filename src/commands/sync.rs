@@ -8,7 +8,9 @@ use std::path::Path;
 
 use crate::api::{resolve_team_id, LinearClient};
 use crate::cache::{Cache, CacheType};
-use crate::OutputFormat;
+use crate::output::{print_json, OutputOptions};
+use crate::text::truncate;
+use crate::display_options;
 
 /// Get default directory to scan for local projects (cross-platform)
 fn get_default_code_dir() -> String {
@@ -85,7 +87,7 @@ enum SyncStatus {
     RemoteOnly(LinearProject),
 }
 
-pub async fn handle(cmd: SyncCommands, output: OutputFormat) -> Result<()> {
+pub async fn handle(cmd: SyncCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         SyncCommands::Status {
             directory,
@@ -241,7 +243,7 @@ fn compare_projects(local: Vec<LocalProject>, remote: Vec<LinearProject>) -> Vec
 async fn status_command(
     directory: Option<String>,
     missing_only: bool,
-    output: OutputFormat,
+    output: &OutputOptions,
 ) -> Result<()> {
     let dir = directory.unwrap_or_else(get_default_code_dir);
     let client = LinearClient::new()?;
@@ -274,7 +276,7 @@ async fn status_command(
         .count();
 
     // JSON output
-    if output == OutputFormat::Json {
+    if output.is_json() {
         let synced: Vec<_> = statuses
             .iter()
             .filter_map(|s| match s {
@@ -325,7 +327,7 @@ async fn status_command(
             }
         });
 
-        println!("{}", serde_json::to_string_pretty(&output_json)?);
+        print_json(&output_json, &output.json)?;
         return Ok(());
     }
 
@@ -351,6 +353,7 @@ async fn status_command(
     println!();
 
     // Display results
+    let name_width = display_options().max_width(40);
     if !missing_only {
         // Show synced projects
         let synced: Vec<_> = statuses
@@ -369,7 +372,8 @@ async fn status_command(
                 } else {
                     "".dimmed()
                 };
-                println!("  {} {} {}", "+".green(), local.name, git_indicator);
+                let name = truncate(&local.name, name_width);
+                println!("  {} {} {}", "+".green(), name, git_indicator);
             }
             println!();
         }
@@ -396,10 +400,11 @@ async fn status_command(
             } else {
                 "".dimmed()
             };
+            let name = truncate(&local.name, name_width);
             println!(
                 "  {} {} {}",
                 "!".yellow(),
-                local.name.yellow(),
+                name.yellow(),
                 git_indicator
             );
         }
@@ -422,11 +427,12 @@ async fn status_command(
                 "[REMOTE]".blue(),
                 remote_only.len()
             );
-            for remote in remote_only {
-                println!("  {} {}", "-".blue(), remote.name.blue());
-            }
-            println!();
+        for remote in remote_only {
+            let name = truncate(&remote.name, name_width);
+            println!("  {} {}", "-".blue(), name.blue());
         }
+        println!();
+    }
     }
 
     // Summary
@@ -525,8 +531,10 @@ async fn push_command(
     let mut created_count = 0;
     let mut failed_count = 0;
 
+    let name_width = display_options().max_width(40);
     for project in to_create {
-        print!("  {} {} ... ", ">".cyan(), project.name);
+        let name = truncate(&project.name, name_width);
+        print!("  {} {} ... ", ">".cyan(), name);
 
         if dry_run {
             println!("{}", "[would create]".yellow());
@@ -690,3 +698,4 @@ mod tests {
         assert_eq!(synced, 1);
     }
 }
+
