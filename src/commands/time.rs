@@ -6,7 +6,7 @@ use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, sort_values, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -267,6 +267,11 @@ async fn list_time_entries(
             };
 
             if let Some(entries) = entries.as_array() {
+                let mut entries = entries.clone();
+                if let Some(sort_key) = output.json.sort.as_deref() {
+                    sort_values(&mut entries, sort_key, output.json.order);
+                }
+
                 if output.is_json() {
                     print_json(&serde_json::Value::Array(entries.clone()), &output.json)?;
                     return Ok(());

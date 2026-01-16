@@ -7,7 +7,7 @@ use tabled::{Table, Tabled};
 use crate::api::{resolve_team_id, LinearClient};
 use crate::cache::{Cache, CacheType};
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, sort_values, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -102,6 +102,11 @@ async fn list_users(team: Option<String>, output: &OutputOptions) -> Result<()> 
     if output.is_json() {
         print_json(&serde_json::json!(users), &output.json)?;
         return Ok(());
+    }
+
+    let mut users = users;
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut users, sort_key, output.json.order);
     }
 
     if users.is_empty() {

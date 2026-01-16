@@ -3,11 +3,12 @@ use clap::Subcommand;
 use colored::Colorize;
 use serde_json::{json, Value};
 use tabled::{Table, Tabled};
+use std::io::BufRead;
 
 use crate::api::{resolve_team_id, LinearClient};
 use crate::cache::{Cache, CacheType};
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, sort_values, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -21,8 +22,8 @@ pub enum StatusCommands {
     },
     /// Get details of a specific status
     Get {
-        /// Status name or ID
-        id: String,
+        /// Status name(s) or ID(s). Use "-" to read from stdin.
+        ids: Vec<String>,
         /// Team name or ID
         #[arg(short, long)]
         team: String,
@@ -46,7 +47,24 @@ struct StatusRow {
 pub async fn handle(cmd: StatusCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         StatusCommands::List { team } => list_statuses(&team, output).await,
-        StatusCommands::Get { id, team } => get_status(&id, &team, output).await,
+        StatusCommands::Get { ids, team } => {
+            let final_ids: Vec<String> = if ids.is_empty() || (ids.len() == 1 && ids[0] == "-") {
+                let stdin = std::io::stdin();
+                stdin
+                    .lock()
+                    .lines()
+                    .map_while(Result::ok)
+                    .filter(|l| !l.trim().is_empty())
+                    .map(|l| l.trim().to_string())
+                    .collect()
+            } else {
+                ids
+            };
+            if final_ids.is_empty() {
+                anyhow::bail!("No status IDs provided. Provide IDs or pipe them via stdin.");
+            }
+            get_statuses(&final_ids, &team, output).await
+        }
     }
 }
 
@@ -136,6 +154,11 @@ async fn list_statuses(team: &str, output: &OutputOptions) -> Result<()> {
     println!("{}", "-".repeat(50));
 
     let width = display_options().max_width(30);
+    let mut states = states;
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut states, sort_key, output.json.order);
+    }
+
     let rows: Vec<StatusRow> = states
         .iter()
         .map(|s| {
@@ -169,7 +192,7 @@ async fn list_statuses(team: &str, output: &OutputOptions) -> Result<()> {
     Ok(())
 }
 
-async fn get_status(id: &str, team: &str, output: &OutputOptions) -> Result<()> {
+async fn get_statuses(ids: &[String], team: &str, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     // Resolve team key/name to UUID
@@ -207,40 +230,50 @@ async fn get_status(id: &str, team: &str, output: &OutputOptions) -> Result<()> 
     let empty = vec![];
     let states = team_data["states"]["nodes"].as_array().unwrap_or(&empty);
 
-    // Find matching status by ID or name
-    let status = states.iter().find(|s| {
-        s["id"].as_str() == Some(id)
-            || s["name"].as_str().map(|n| n.to_lowercase()) == Some(id.to_lowercase())
-    });
+    let mut found: Vec<serde_json::Value> = Vec::new();
+    for id in ids {
+        let status = states.iter().find(|s| {
+            s["id"].as_str() == Some(id.as_str())
+                || s["name"]
+                    .as_str()
+                    .map(|n| n.to_lowercase())
+                    == Some(id.to_lowercase())
+        });
 
-    match status {
-        Some(s) => {
-            if output.is_json() {
-                print_json(s, &output.json)?;
-                return Ok(());
-            }
-
-            println!("{}", s["name"].as_str().unwrap_or("").bold());
-            println!("{}", "-".repeat(40));
-            println!("Type: {}", s["type"].as_str().unwrap_or("-"));
-            println!("Color: {}", s["color"].as_str().unwrap_or("-"));
-            println!(
-                "Position: {}",
-                s["position"]
-                    .as_f64()
-                    .map(|p| format!("{:.0}", p))
-                    .unwrap_or("-".to_string())
-            );
-            if let Some(desc) = s["description"].as_str() {
-                if !desc.is_empty() {
-                    println!("Description: {}", desc);
-                }
-            }
-            println!("ID: {}", s["id"].as_str().unwrap_or("-"));
-            Ok(())
-        }
-        None => {
-            anyhow::bail!("Status not found: {}", id);
+        if let Some(s) = status {
+            found.push(s.clone());
+        } else if !output.is_json() {
+            eprintln!("{} Status not found: {}", "!".yellow(), id);
         }
     }
+
+    if output.is_json() {
+        print_json(&serde_json::json!(found), &output.json)?;
+        return Ok(());
+    }
+
+    for (idx, status) in found.iter().enumerate() {
+        if idx > 0 {
+            println!();
+        }
+        println!("{}", status["name"].as_str().unwrap_or("").bold());
+        println!("{}", "-".repeat(40));
+        println!("Type: {}", status["type"].as_str().unwrap_or("-"));
+        println!("Color: {}", status["color"].as_str().unwrap_or("-"));
+        println!(
+            "Position: {}",
+            status["position"]
+                .as_f64()
+                .map(|p| format!("{:.0}", p))
+                .unwrap_or("-".to_string())
+        );
+        if let Some(desc) = status["description"].as_str() {
+            if !desc.is_empty() {
+                println!("Description: {}", desc);
+            }
+        }
+        println!("ID: {}", status["id"].as_str().unwrap_or("-"));
+    }
+
+    Ok(())
 }

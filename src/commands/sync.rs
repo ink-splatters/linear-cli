@@ -239,6 +239,30 @@ fn compare_projects(local: Vec<LocalProject>, remote: Vec<LinearProject>) -> Vec
     statuses
 }
 
+fn sync_name(status: &SyncStatus) -> String {
+    match status {
+        SyncStatus::Synced { local, .. } => local.name.to_lowercase(),
+        SyncStatus::LocalOnly(local) => local.name.to_lowercase(),
+        SyncStatus::RemoteOnly(remote) => remote.name.to_lowercase(),
+    }
+}
+
+fn sync_path(status: &SyncStatus) -> String {
+    match status {
+        SyncStatus::Synced { local, .. } => local.path.to_lowercase(),
+        SyncStatus::LocalOnly(local) => local.path.to_lowercase(),
+        SyncStatus::RemoteOnly(_) => String::new(),
+    }
+}
+
+fn sync_type(status: &SyncStatus) -> String {
+    match status {
+        SyncStatus::Synced { .. } => "synced".to_string(),
+        SyncStatus::LocalOnly(_) => "local_only".to_string(),
+        SyncStatus::RemoteOnly(_) => "remote_only".to_string(),
+    }
+}
+
 /// Display sync status
 async fn status_command(
     directory: Option<String>,
@@ -259,7 +283,19 @@ async fn status_command(
     let linear_projects = linear_result?;
 
     // Compare
-    let statuses = compare_projects(local_projects, linear_projects);
+    let mut statuses = compare_projects(local_projects, linear_projects);
+
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        match sort_key {
+            "name" => statuses.sort_by(|a, b| sync_name(a).cmp(&sync_name(b))),
+            "path" => statuses.sort_by(|a, b| sync_path(a).cmp(&sync_path(b))),
+            "type" => statuses.sort_by(|a, b| sync_type(a).cmp(&sync_type(b))),
+            _ => {}
+        }
+        if output.json.order == crate::output::SortOrder::Desc {
+            statuses.reverse();
+        }
+    }
 
     // Count stats
     let synced_count = statuses

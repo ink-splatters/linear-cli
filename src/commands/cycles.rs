@@ -6,7 +6,7 @@ use tabled::{Table, Tabled};
 
 use crate::api::{resolve_team_id, LinearClient};
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, sort_values, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -96,25 +96,28 @@ async fn list_cycles(team: &str, include_all: bool, output: &OutputOptions) -> R
     }
 
     let team_name = team_data["name"].as_str().unwrap_or("");
-    let empty = vec![];
-    let cycles = team_data["cycles"]["nodes"].as_array().unwrap_or(&empty);
+    let cycles = team_data["cycles"]["nodes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
 
     if cycles.is_empty() {
         println!("No cycles found for team '{}'.", team_name);
         return Ok(());
     }
 
+    let mut filtered: Vec<_> = cycles
+        .into_iter()
+        .filter(|c| include_all || c["completedAt"].is_null())
+        .collect();
+
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut filtered, sort_key, output.json.order);
+    }
+
     let width = display_options().max_width(30);
-    let rows: Vec<CycleRow> = cycles
+    let rows: Vec<CycleRow> = filtered
         .iter()
-        .filter(|c| {
-            if include_all {
-                true
-            } else {
-                // Filter out completed cycles unless --all is specified
-                c["completedAt"].is_null()
-            }
-        })
         .map(|c| {
             let progress = c["progress"].as_f64().unwrap_or(0.0);
 
@@ -156,9 +159,10 @@ async fn list_cycles(team: &str, include_all: bool, output: &OutputOptions) -> R
     println!("{}", format!("Cycles for team '{}'", team_name).bold());
     println!("{}", "-".repeat(40));
 
+    let rows_len = rows.len();
     let table = Table::new(rows).to_string();
     println!("{}", table);
-    println!("\n{} cycles shown", cycles.len());
+    println!("\n{} cycles shown", rows_len);
 
     Ok(())
 }

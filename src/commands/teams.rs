@@ -8,7 +8,7 @@ use tabled::{Table, Tabled};
 use crate::api::LinearClient;
 use crate::cache::{Cache, CacheType};
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, sort_values, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -93,8 +93,11 @@ async fn list_teams(output: &OutputOptions) -> Result<()> {
         return Ok(());
     }
 
-    let empty = vec![];
-    let teams = teams_data.as_array().unwrap_or(&empty);
+    let mut teams = teams_data.as_array().cloned().unwrap_or_default();
+
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut teams, sort_key, output.json.order);
+    }
 
     if teams.is_empty() {
         println!("No teams found.");

@@ -3,11 +3,15 @@ use clap::Subcommand;
 use colored::Colorize;
 use dialoguer::{Input, Select};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tabled::{Table, Tabled};
 
+use crate::display_options;
+use crate::output::{print_json, sort_values, OutputOptions};
+use crate::text::truncate;
 /// Issue template structure for creating issues with predefined values
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IssueTemplate {
@@ -109,12 +113,12 @@ pub fn get_template(name: &str) -> Result<Option<IssueTemplate>> {
     Ok(store.templates.get(name).cloned())
 }
 
-pub async fn handle(cmd: TemplateCommands) -> Result<()> {
+pub async fn handle(cmd: TemplateCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
-        TemplateCommands::List => list_templates(),
-        TemplateCommands::Create { name } => create_template(&name),
-        TemplateCommands::Show { name } => show_template(&name),
-        TemplateCommands::Delete { name, force } => delete_template(&name, force),
+        TemplateCommands::List => list_templates(output),
+        TemplateCommands::Create { name } => create_template(&name, output),
+        TemplateCommands::Show { name } => show_template(&name, output),
+        TemplateCommands::Delete { name, force } => delete_template(&name, force, output),
     }
 }
 
@@ -130,7 +134,7 @@ fn priority_to_string(priority: Option<i32>) -> String {
     }
 }
 
-fn list_templates() -> Result<()> {
+fn list_templates(output: &OutputOptions) -> Result<()> {
     let store = load_templates()?;
 
     if store.templates.is_empty() {
@@ -139,23 +143,54 @@ fn list_templates() -> Result<()> {
         return Ok(());
     }
 
-    let mut rows: Vec<TemplateRow> = store
+    let mut templates: Vec<serde_json::Value> = store
         .templates
         .values()
+        .map(|t| json!(t))
+        .collect();
+
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut templates, sort_key, output.json.order);
+    } else {
+        templates.sort_by(|a, b| {
+            a["name"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(b["name"].as_str().unwrap_or(""))
+        });
+    }
+
+    if output.is_json() {
+        print_json(&serde_json::json!(templates), &output.json)?;
+        return Ok(());
+    }
+
+    let width = display_options().max_width(30);
+    let rows: Vec<TemplateRow> = templates
+        .iter()
         .map(|t| TemplateRow {
-            name: t.name.clone(),
-            title_prefix: t.title_prefix.clone().unwrap_or_else(|| "-".to_string()),
-            team: t.team.clone().unwrap_or_else(|| "-".to_string()),
-            priority: priority_to_string(t.default_priority),
-            labels: if t.default_labels.is_empty() {
-                "-".to_string()
-            } else {
-                t.default_labels.join(", ")
+            name: truncate(t["name"].as_str().unwrap_or(""), width),
+            title_prefix: truncate(
+                t["title_prefix"].as_str().unwrap_or("-"),
+                width,
+            ),
+            team: truncate(t["team"].as_str().unwrap_or("-"), width),
+            priority: priority_to_string(t["default_priority"].as_i64().map(|p| p as i32)),
+            labels: {
+                let labels = t["default_labels"].as_array().cloned().unwrap_or_default();
+                if labels.is_empty() {
+                    "-".to_string()
+                } else {
+                    let joined = labels
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    truncate(&joined, display_options().max_width(40))
+                }
             },
         })
         .collect();
-
-    rows.sort_by(|a, b| a.name.cmp(&b.name));
 
     let table = Table::new(rows).to_string();
     println!("{}", table);
@@ -164,7 +199,7 @@ fn list_templates() -> Result<()> {
     Ok(())
 }
 
-fn create_template(name: &str) -> Result<()> {
+fn create_template(name: &str, output: &OutputOptions) -> Result<()> {
     let mut store = load_templates()?;
 
     if store.templates.contains_key(name) {
@@ -246,18 +281,28 @@ fn create_template(name: &str) -> Result<()> {
     store.templates.insert(name.to_string(), template);
     save_templates(&store)?;
 
+    if output.is_json() {
+        print_json(&json!(store.templates.get(name)), &output.json)?;
+        return Ok(());
+    }
+
     println!("\n{} Template created successfully!", "+".green());
 
     Ok(())
 }
 
-fn show_template(name: &str) -> Result<()> {
+fn show_template(name: &str, output: &OutputOptions) -> Result<()> {
     let store = load_templates()?;
 
     let template = store
         .templates
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Template not found"))?;
+
+    if output.is_json() {
+        print_json(&json!(template), &output.json)?;
+        return Ok(());
+    }
 
     println!("{} {}", "Template:".bold(), template.name.cyan().bold());
     println!("{}", "-".repeat(40));
@@ -292,7 +337,7 @@ fn show_template(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn delete_template(name: &str, force: bool) -> Result<()> {
+fn delete_template(name: &str, force: bool, output: &OutputOptions) -> Result<()> {
     let mut store = load_templates()?;
 
     if !store.templates.contains_key(name) {
@@ -307,6 +352,11 @@ fn delete_template(name: &str, force: bool) -> Result<()> {
 
     store.templates.remove(name);
     save_templates(&store)?;
+
+    if output.is_json() {
+        print_json(&json!({ "deleted": name }), &output.json)?;
+        return Ok(());
+    }
 
     println!("{} Template deleted", "+".green());
 

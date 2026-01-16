@@ -6,7 +6,7 @@ use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, sort_values, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -111,18 +111,22 @@ async fn list_notifications(include_all: bool, limit: u32, output: &OutputOption
         .as_array()
         .unwrap_or(&empty);
 
-    let filtered: Vec<_> = if include_all {
-        notifications.iter().collect()
+    let mut filtered: Vec<_> = if include_all {
+        notifications.to_vec()
     } else {
         notifications
             .iter()
             .filter(|n| n["readAt"].is_null())
+            .cloned()
             .collect()
     };
 
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut filtered, sort_key, output.json.order);
+    }
+
     if output.is_json() {
-        let filtered_json: Vec<_> = filtered.iter().map(|v| (*v).clone()).collect();
-        print_json(&serde_json::json!(filtered_json), &output.json)?;
+        print_json(&serde_json::json!(filtered), &output.json)?;
         return Ok(());
     }
 

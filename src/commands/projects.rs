@@ -7,7 +7,7 @@ use tabled::{Table, Tabled};
 
 use crate::api::{resolve_team_id, LinearClient};
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, sort_values, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -71,6 +71,9 @@ pub enum ProjectCommands {
         /// New icon
         #[arg(short, long)]
         icon: Option<String>,
+        /// Preview without updating (dry run)
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Delete a project
     #[command(after_help = r#"EXAMPLES:
@@ -141,7 +144,8 @@ pub async fn handle(cmd: ProjectCommands, output: &OutputOptions) -> Result<()> 
             description,
             color,
             icon,
-        } => update_project(&id, name, description, color, icon, output).await,
+            dry_run,
+        } => update_project(&id, name, description, color, icon, dry_run, output).await,
         ProjectCommands::Delete { id, force } => delete_project(&id, force).await,
         ProjectCommands::AddLabels { id, labels } => add_labels(&id, labels, output).await,
     }
@@ -176,10 +180,14 @@ async fn list_projects(include_archived: bool, output: &OutputOptions) -> Result
         return Ok(());
     }
 
-    let empty = vec![];
-    let projects = result["data"]["projects"]["nodes"]
+    let mut projects = result["data"]["projects"]["nodes"]
         .as_array()
-        .unwrap_or(&empty);
+        .cloned()
+        .unwrap_or_default();
+
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut projects, sort_key, output.json.order);
+    }
 
     if projects.is_empty() {
         println!("No projects found.");
@@ -411,6 +419,7 @@ async fn update_project(
     description: Option<String>,
     color: Option<String>,
     icon: Option<String>,
+    dry_run: bool,
     output: &OutputOptions,
 ) -> Result<()> {
     let client = LinearClient::new()?;
@@ -427,6 +436,30 @@ async fn update_project(
     }
     if let Some(i) = icon {
         input["icon"] = json!(i);
+    }
+
+    if input.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+        println!("No updates specified.");
+        return Ok(());
+    }
+
+    if dry_run {
+        if output.is_json() {
+            print_json(
+                &json!({
+                    "dry_run": true,
+                    "would_update": {
+                        "id": id,
+                        "input": input,
+                    }
+                }),
+                &output.json,
+            )?;
+        } else {
+            println!("{}", "[DRY RUN] Would update project:".yellow().bold());
+            println!("  ID: {}", id);
+        }
+        return Ok(());
     }
 
     let mutation = r#"

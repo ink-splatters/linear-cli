@@ -5,7 +5,7 @@ use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, sort_values, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -110,10 +110,14 @@ async fn search_issues(
 
     let result = client.query(graphql_query, Some(variables)).await?;
 
-    let empty = vec![];
-    let issues = result["data"]["issues"]["nodes"]
+    let mut issues = result["data"]["issues"]["nodes"]
         .as_array()
-        .unwrap_or(&empty);
+        .cloned()
+        .unwrap_or_default();
+
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut issues, sort_key, output.json.order);
+    }
 
     if output.is_json() {
         print_json(&serde_json::json!(issues), &output.json)?;
@@ -186,10 +190,14 @@ async fn search_projects(
 
     let result = client.query(graphql_query, Some(variables)).await?;
 
-    let empty = vec![];
-    let projects = result["data"]["projects"]["nodes"]
+    let mut projects = result["data"]["projects"]["nodes"]
         .as_array()
-        .unwrap_or(&empty);
+        .cloned()
+        .unwrap_or_default();
+
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut projects, sort_key, output.json.order);
+    }
 
     if output.is_json() {
         print_json(&serde_json::json!(projects), &output.json)?;

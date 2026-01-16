@@ -3,10 +3,11 @@ use clap::Subcommand;
 use colored::Colorize;
 use serde_json::json;
 use tabled::{Table, Tabled};
+use std::io::BufRead;
 
 use crate::api::LinearClient;
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, sort_values, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -14,8 +15,8 @@ pub enum CommentCommands {
     /// List comments for an issue
     #[command(alias = "ls")]
     List {
-        /// Issue ID to list comments for
-        issue_id: String,
+        /// Issue ID(s). Use "-" to read from stdin.
+        issue_ids: Vec<String>,
     },
     /// Create a new comment on an issue
     Create {
@@ -44,7 +45,7 @@ struct CommentRow {
 
 pub async fn handle(cmd: CommentCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
-        CommentCommands::List { issue_id } => list_comments(&issue_id, output).await,
+        CommentCommands::List { issue_ids } => list_comments(&issue_ids, output).await,
         CommentCommands::Create {
             issue_id,
             body,
@@ -53,9 +54,106 @@ pub async fn handle(cmd: CommentCommands, output: &OutputOptions) -> Result<()> 
     }
 }
 
-async fn list_comments(issue_id: &str, output: &OutputOptions) -> Result<()> {
-    let client = LinearClient::new()?;
+async fn list_comments(issue_ids: &[String], output: &OutputOptions) -> Result<()> {
+    let final_ids: Vec<String> = if issue_ids.is_empty()
+        || (issue_ids.len() == 1 && issue_ids[0] == "-")
+    {
+        let stdin = std::io::stdin();
+        stdin
+            .lock()
+            .lines()
+            .map_while(Result::ok)
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.trim().to_string())
+            .collect()
+    } else {
+        issue_ids.to_vec()
+    };
 
+    if final_ids.is_empty() {
+        anyhow::bail!("No issue IDs provided. Provide IDs or pipe them via stdin.");
+    }
+
+    let client = LinearClient::new()?;
+    let mut issues = Vec::new();
+    for id in &final_ids {
+        let issue = fetch_issue_comments(&client, id).await?;
+        if issue.is_null() {
+            if !output.is_json() {
+                eprintln!("{} Issue not found: {}", "!".yellow(), id);
+            }
+            continue;
+        }
+        issues.push(issue);
+    }
+
+    // JSON output - return raw data for LLM consumption
+    if output.is_json() {
+        if issues.len() == 1 {
+            print_json(&issues[0], &output.json)?;
+        } else {
+            print_json(&serde_json::json!(issues), &output.json)?;
+        }
+        return Ok(());
+    }
+
+    for (idx, issue) in issues.iter().enumerate() {
+        if idx > 0 {
+            println!();
+        }
+        let identifier = issue["identifier"].as_str().unwrap_or("");
+        let title = issue["title"].as_str().unwrap_or("");
+
+        println!("{} {}", identifier.bold(), title);
+        println!("{}", "-".repeat(50));
+
+        let mut comments = issue["comments"]["nodes"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+
+        if let Some(sort_key) = output.json.sort.as_deref() {
+            sort_values(&mut comments, sort_key, output.json.order);
+        }
+
+        if comments.is_empty() {
+            println!("No comments found for this issue.");
+            continue;
+        }
+
+        let width = display_options().max_width(60);
+        let rows: Vec<CommentRow> = comments
+            .iter()
+            .map(|c| {
+                let body = c["body"].as_str().unwrap_or("");
+                let truncated_body = truncate(body, width);
+
+                let created_at = c["createdAt"]
+                    .as_str()
+                    .unwrap_or("")
+                    .split('T')
+                    .next()
+                    .unwrap_or("-")
+                    .to_string();
+
+                CommentRow {
+                    author: c["user"]["name"].as_str().unwrap_or("Unknown").to_string(),
+                    created_at,
+                    body: truncated_body.replace('\n', " "),
+                    id: c["id"].as_str().unwrap_or("").to_string(),
+                }
+            })
+            .collect();
+
+        let table = Table::new(rows).to_string();
+        println!("{}", table);
+        println!("\n{} comments", comments.len());
+    }
+
+    Ok(())
+}
+
+async fn fetch_issue_comments(client: &LinearClient, issue_id: &str) -> Result<serde_json::Value> {
     let query = r#"
         query($issueId: String!) {
             issue(id: $issueId) {
@@ -78,61 +176,7 @@ async fn list_comments(issue_id: &str, output: &OutputOptions) -> Result<()> {
     let result = client
         .query(query, Some(json!({ "issueId": issue_id })))
         .await?;
-    let issue = &result["data"]["issue"];
-
-    if issue.is_null() {
-        anyhow::bail!("Issue not found: {}", issue_id);
-    }
-
-    // JSON output - return raw data for LLM consumption
-    if output.is_json() {
-        print_json(issue, &output.json)?;
-        return Ok(());
-    }
-
-    let identifier = issue["identifier"].as_str().unwrap_or("");
-    let title = issue["title"].as_str().unwrap_or("");
-
-    println!("{} {}", identifier.bold(), title);
-    println!("{}", "-".repeat(50));
-
-    let empty = vec![];
-    let comments = issue["comments"]["nodes"].as_array().unwrap_or(&empty);
-
-    if comments.is_empty() {
-        println!("No comments found for this issue.");
-        return Ok(());
-    }
-
-    let width = display_options().max_width(60);
-    let rows: Vec<CommentRow> = comments
-        .iter()
-        .map(|c| {
-            let body = c["body"].as_str().unwrap_or("");
-            let truncated_body = truncate(body, width);
-
-            let created_at = c["createdAt"]
-                .as_str()
-                .unwrap_or("")
-                .split('T')
-                .next()
-                .unwrap_or("-")
-                .to_string();
-
-            CommentRow {
-                author: c["user"]["name"].as_str().unwrap_or("Unknown").to_string(),
-                created_at,
-                body: truncated_body.replace('\n', " "),
-                id: c["id"].as_str().unwrap_or("").to_string(),
-            }
-        })
-        .collect();
-
-    let table = Table::new(rows).to_string();
-    println!("{}", table);
-    println!("\n{} comments", comments.len());
-
-    Ok(())
+    Ok(result["data"]["issue"].clone())
 }
 
 async fn create_comment(issue_id: &str, body: &str, parent_id: Option<String>) -> Result<()> {

@@ -6,7 +6,7 @@ use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, sort_values, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -128,8 +128,14 @@ async fn list_labels(label_type: &str, output: &OutputOptions) -> Result<()> {
         return Ok(());
     }
 
-    let empty = vec![];
-    let labels = result["data"][key]["nodes"].as_array().unwrap_or(&empty);
+    let mut labels = result["data"][key]["nodes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut labels, sort_key, output.json.order);
+    }
 
     if labels.is_empty() {
         println!("No {} labels found.", label_type);
