@@ -2,14 +2,21 @@ mod api;
 mod cache;
 mod commands;
 mod config;
+mod error;
+mod output;
+mod text;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use std::sync::OnceLock;
 use clap_complete::{generate, Shell};
 use commands::{
     bulk, comments, cycles, documents, git, interactive, issues, labels, notifications, projects,
     search, statuses, sync, teams, templates, time, uploads, users,
 };
+use output::{JsonOutputOptions, OutputOptions, SortOrder};
+use output::print_json;
+use error::CliError;
 
 /// Output format for command results
 #[derive(Debug, Clone, Copy, Default, ValueEnum, PartialEq)]
@@ -19,6 +26,14 @@ pub enum OutputFormat {
     Table,
     /// Display results as raw JSON
     Json,
+}
+
+#[derive(Debug, Clone, Copy, Default, ValueEnum, PartialEq)]
+pub enum ColorChoice {
+    #[default]
+    Auto,
+    Always,
+    Never,
 }
 
 /// Global options for agentic/scripting use
@@ -45,10 +60,16 @@ pub struct AgentOptions {
     4. Create an issue:
        linear issues create "Fix bug" --team ENG --priority 2
 
+COMMON FLAGS:
+    --output table|json           Output format (default: table)
+    --color auto|always|never     Color output control
+    --no-color                    Disable color output
+    --quiet                       Reduce decorative output
+
 For more info on a command, run: linear <command> --help"#)]
 struct Cli {
     /// Output format (table or json)
-    #[arg(short, long, global = true, default_value = "table")]
+    #[arg(short, long, global = true, env = "LINEAR_CLI_OUTPUT", default_value = "table")]
     output: OutputFormat,
 
     /// Suppress decorative output (headers, separators, tips) - for scripting
@@ -59,12 +80,78 @@ struct Cli {
     #[arg(long, global = true)]
     id_only: bool,
 
+    /// Color output: auto, always, or never
+    #[arg(long, global = true, value_enum, default_value = "auto", conflicts_with = "no_color")]
+    color: ColorChoice,
+
+    /// Disable color output
+    #[arg(long, global = true)]
+    no_color: bool,
+
+    /// Max column width for table output (default: 50)
+    #[arg(long, global = true)]
+    width: Option<usize>,
+
+    /// Disable truncation for table output
+    #[arg(long, global = true)]
+    no_truncate: bool,
+
+    /// Emit compact JSON without pretty formatting
+    #[arg(long, global = true)]
+    compact: bool,
+
+    /// Limit JSON output to specific fields (comma-separated, supports dot paths)
+    #[arg(long, global = true, value_delimiter = ',')]
+    fields: Vec<String>,
+
+    /// Sort JSON array output by a field (default: identifier/id when available)
+    #[arg(long, global = true)]
+    sort: Option<String>,
+
+    /// Sort order for JSON array output
+    #[arg(long, global = true, value_enum, default_value = "asc")]
+    order: SortOrder,
+
+    /// Override API key for this invocation
+    #[arg(long, global = true, env = "LINEAR_API_KEY")]
+    api_key: Option<String>,
+
+    /// Show common tasks and examples
     #[command(subcommand)]
     command: Commands,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DisplayOptions {
+    pub width: Option<usize>,
+    pub no_truncate: bool,
+}
+
+impl DisplayOptions {
+    pub fn max_width(&self, default: usize) -> Option<usize> {
+        if self.no_truncate {
+            None
+        } else {
+            Some(self.width.unwrap_or(default))
+        }
+    }
+}
+
+static DISPLAY_OPTIONS: OnceLock<DisplayOptions> = OnceLock::new();
+
+fn set_cli_state(display: DisplayOptions) {
+    let _ = DISPLAY_OPTIONS.set(display);
+}
+
+pub fn display_options() -> DisplayOptions {
+    DISPLAY_OPTIONS.get().copied().unwrap_or_default()
+}
+
 #[derive(Subcommand)]
 enum Commands {
+    /// Show common tasks and examples
+    #[command(alias = "tasks")]
+    Common,
     /// Manage projects - list, create, update, delete projects
     #[command(alias = "p")]
     #[command(after_help = r#"EXAMPLES:
@@ -248,9 +335,14 @@ enum Commands {
     #[command(alias = "int")]
     #[command(after_help = r#"EXAMPLES:
     linear interactive                      # Launch interactive mode
+    linear interactive --team ENG           # Preselect team
 
 Use arrow keys to navigate, Enter to select, q to quit."#)]
-    Interactive,
+    Interactive {
+        /// Preselect team by key, name, or ID
+        #[arg(short, long)]
+        team: Option<String>,
+    },
     /// Detect current Linear issue from git branch - for AI agents
     #[command(alias = "ctx")]
     #[command(after_help = r#"EXAMPLES:
@@ -331,28 +423,68 @@ enum ConfigCommands {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    let output = cli.output;
+    if cli.no_color || cli.color == ColorChoice::Never {
+        colored::control::set_override(false);
+    } else if cli.color == ColorChoice::Always {
+        colored::control::set_override(true);
+    }
+    set_cli_state(DisplayOptions {
+        width: cli.width,
+        no_truncate: cli.no_truncate,
+    });
+    if let Some(key) = cli.api_key.as_deref() {
+        std::env::set_var("LINEAR_API_KEY", key);
+    }
+    let json_opts = JsonOutputOptions::new(
+        cli.compact,
+        if cli.fields.is_empty() {
+            None
+        } else {
+            Some(cli.fields.clone())
+        },
+        cli.sort.clone(),
+        cli.order,
+        true,
+    );
+    let output = OutputOptions {
+        format: cli.output,
+        json: json_opts,
+    };
     let agent_opts = AgentOptions {
         quiet: cli.quiet,
         id_only: cli.id_only,
     };
 
-    let result = run_command(cli.command, output, agent_opts).await;
+    let result = run_command(cli.command, &output, agent_opts).await;
 
     match result {
         Ok(()) => std::process::exit(0),
         Err(e) => {
             // Check if JSON output requested for structured errors
-            if output == OutputFormat::Json {
-                let error_json = serde_json::json!({
-                    "error": true,
-                    "message": e.to_string(),
-                    "code": categorize_error(&e),
-                });
-                eprintln!(
-                    "{}",
-                    serde_json::to_string(&error_json).unwrap_or_else(|_| e.to_string())
-                );
+            if output.is_json() {
+                if let Some(cli_error) = e.downcast_ref::<CliError>() {
+                    let error_json = serde_json::json!({
+                        "error": true,
+                        "message": cli_error.message,
+                        "code": cli_error.code,
+                        "details": cli_error.details,
+                        "retry_after": cli_error.retry_after,
+                    });
+                    eprintln!(
+                        "{}",
+                        serde_json::to_string(&error_json).unwrap_or_else(|_| e.to_string())
+                    );
+                } else {
+                    let error_json = serde_json::json!({
+                        "error": true,
+                        "message": e.to_string(),
+                        "code": categorize_error(&e),
+                    });
+                    eprintln!(
+                        "{}",
+                        serde_json::to_string(&error_json).unwrap_or_else(|_| e.to_string())
+                    );
+                }
             } else {
                 eprintln!("Error: {}", e);
             }
@@ -363,6 +495,9 @@ async fn main() {
 
 /// Categorize error for exit codes: 1=general error, 2=not found, 3=auth error
 fn categorize_error(e: &anyhow::Error) -> u8 {
+    if let Some(cli_error) = e.downcast_ref::<CliError>() {
+        return cli_error.code;
+    }
     let msg = e.to_string().to_lowercase();
     if msg.contains("not found") || msg.contains("does not exist") {
         2
@@ -371,6 +506,8 @@ fn categorize_error(e: &anyhow::Error) -> u8 {
         || msg.contains("authentication")
     {
         3
+    } else if msg.contains("rate limit") || msg.contains("too many requests") {
+        4
     } else {
         1
     }
@@ -378,30 +515,47 @@ fn categorize_error(e: &anyhow::Error) -> u8 {
 
 async fn run_command(
     command: Commands,
-    output: OutputFormat,
+    output: &OutputOptions,
     agent_opts: AgentOptions,
 ) -> Result<()> {
     match command {
-        Commands::Projects { action } => projects::handle(action, output).await?,
-        Commands::Issues { action } => issues::handle(action, output, agent_opts).await?,
-        Commands::Labels { action } => labels::handle(action, output).await?,
-        Commands::Teams { action } => teams::handle(action, output).await?,
-        Commands::Users { action } => users::handle(action, output).await?,
-        Commands::Cycles { action } => cycles::handle(action, output).await?,
-        Commands::Comments { action } => comments::handle(action, output).await?,
+        Commands::Common => {
+            println!("Common tasks:");
+            println!("  linear issues list -t ENG");
+            println!("  linear issues get LIN-123");
+            println!("  linear issues create \"Title\" -t ENG");
+            println!("  linear issues update LIN-123 -s Done");
+            println!("  linear projects list");
+            println!("  linear teams list");
+            println!("  linear git checkout LIN-123");
+            println!("  linear git pr LIN-123 --draft");
+            println!("  linear interactive --team ENG");
+            println!();
+            println!("Tips:");
+            println!("  Use --help after any command for more options.");
+            println!("  Use --output json for scripting/LLMs.");
+            println!("  Use --no-color for logs/CI.");
+        }
+        Commands::Projects { action } => projects::handle(action, &output).await?,
+        Commands::Issues { action } => issues::handle(action, &output, agent_opts).await?,
+        Commands::Labels { action } => labels::handle(action, &output).await?,
+        Commands::Teams { action } => teams::handle(action, &output).await?,
+        Commands::Users { action } => users::handle(action, &output).await?,
+        Commands::Cycles { action } => cycles::handle(action, &output).await?,
+        Commands::Comments { action } => comments::handle(action, &output).await?,
         Commands::Documents { action } => documents::handle(action).await?,
-        Commands::Search { action } => search::handle(action, output).await?,
-        Commands::Sync { action } => sync::handle(action, output).await?,
-        Commands::Statuses { action } => statuses::handle(action, output).await?,
+        Commands::Search { action } => search::handle(action, &output).await?,
+        Commands::Sync { action } => sync::handle(action, &output).await?,
+        Commands::Statuses { action } => statuses::handle(action, &output).await?,
         Commands::Git { action } => git::handle(action).await?,
-        Commands::Bulk { action } => bulk::handle(action, output).await?,
+        Commands::Bulk { action } => bulk::handle(action, &output).await?,
         Commands::Cache { action } => commands::cache::handle(action).await?,
-        Commands::Notifications { action } => notifications::handle(action, output).await?,
+        Commands::Notifications { action } => notifications::handle(action, &output).await?,
         Commands::Templates { action } => templates::handle(action).await?,
-        Commands::Time { action } => time::handle(action, output).await?,
+        Commands::Time { action } => time::handle(action, &output).await?,
         Commands::Uploads { action } => uploads::handle(action).await?,
-        Commands::Interactive => interactive::run().await?,
-        Commands::Context => handle_context(output).await?,
+        Commands::Interactive { team } => interactive::run(team).await?,
+        Commands::Context => handle_context(&output).await?,
         Commands::Config { action } => match action {
             ConfigCommands::SetKey { key } => {
                 config::set_api_key(&key)?;
@@ -438,7 +592,7 @@ async fn run_command(
 }
 
 /// Handle the context command - detect current Linear issue from git branch
-async fn handle_context(output: OutputFormat) -> Result<()> {
+async fn handle_context(output: &OutputOptions) -> Result<()> {
     // Get current git branch
     let branch_output = std::process::Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -461,7 +615,7 @@ async fn handle_context(output: OutputFormat) -> Result<()> {
         .map(|m| m.as_str().to_uppercase())
         .ok_or_else(|| anyhow::anyhow!("No Linear issue ID found in branch: {}", branch))?;
 
-    if output == OutputFormat::Json {
+    if output.is_json() {
         // Fetch issue details for JSON output
         let client = api::LinearClient::new()?;
         let query = r#"
@@ -486,35 +640,35 @@ async fn handle_context(output: OutputFormat) -> Result<()> {
             Ok(data) => {
                 let issue = &data["data"]["issue"];
                 if issue.is_null() {
-                    println!(
-                        "{}",
-                        serde_json::json!({
+                    print_json(
+                        &serde_json::json!({
                             "branch": branch,
                             "issue_id": issue_id,
                             "found": false,
-                        })
-                    );
+                        }),
+                        &output.json,
+                    )?;
                 } else {
-                    println!(
-                        "{}",
-                        serde_json::json!({
+                    print_json(
+                        &serde_json::json!({
                             "branch": branch,
                             "issue_id": issue_id,
                             "found": true,
                             "issue": issue,
-                        })
-                    );
+                        }),
+                        &output.json,
+                    )?;
                 }
             }
             Err(_) => {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                print_json(
+                    &serde_json::json!({
                         "branch": branch,
                         "issue_id": issue_id,
                         "found": false,
-                    })
-                );
+                    }),
+                    &output.json,
+                )?;
             }
         }
     } else {
