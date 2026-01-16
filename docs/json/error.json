@@ -1,0 +1,7 @@
+{
+  "error": true,
+  "message": "Issue not found: LIN-999",
+  "code": 2,
+  "details": { "status": 404, "reason": "Not Found" },
+  "retry_after": null
+}

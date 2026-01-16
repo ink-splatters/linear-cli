@@ -1,0 +1,14 @@
+{
+  "branch": "feature/LIN-123-fix-login",
+  "issue_id": "LIN-123",
+  "found": true,
+  "issue": {
+    "id": "issue_uuid",
+    "identifier": "LIN-123",
+    "title": "Fix login bug",
+    "state": { "name": "In Progress" },
+    "assignee": { "name": "Ada Lovelace" },
+    "priority": 2,
+    "url": "https://linear.app/team/issue/LIN-123"
+  }
+}

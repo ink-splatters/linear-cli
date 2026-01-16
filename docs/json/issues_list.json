@@ -1,0 +1,10 @@
+[
+  {
+    "id": "issue_uuid",
+    "identifier": "LIN-123",
+    "title": "Fix login bug",
+    "priority": 2,
+    "state": { "name": "In Progress" },
+    "assignee": { "name": "Ada Lovelace" }
+  }
+]

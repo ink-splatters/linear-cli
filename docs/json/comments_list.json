@@ -1,0 +1,16 @@
+{
+  "id": "issue_uuid",
+  "identifier": "LIN-123",
+  "title": "Fix login bug",
+  "comments": {
+    "nodes": [
+      {
+        "id": "comment_uuid",
+        "body": "LGTM",
+        "createdAt": "2024-01-02T10:00:00.000Z",
+        "user": { "name": "Ada Lovelace", "email": "ada@example.com" },
+        "parent": { "id": null }
+      }
+    ]
+  }
+}

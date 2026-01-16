@@ -1,0 +1,16 @@
+{
+  "id": "issue_uuid",
+  "identifier": "LIN-123",
+  "title": "Fix login bug",
+  "description": "Steps to reproduce...",
+  "priority": 2,
+  "url": "https://linear.app/team/issue/LIN-123",
+  "createdAt": "2024-01-01T12:00:00.000Z",
+  "updatedAt": "2024-01-02T12:00:00.000Z",
+  "state": { "name": "In Progress" },
+  "team": { "name": "Engineering" },
+  "assignee": { "name": "Ada Lovelace", "email": "ada@example.com" },
+  "labels": { "nodes": [ { "name": "bug", "color": "#F59E0B" } ] },
+  "project": { "name": "Auth" },
+  "parent": { "identifier": "LIN-1", "title": "Auth workstream" }
+}
