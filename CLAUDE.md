@@ -23,8 +23,13 @@ Use `linear-cli` for all Linear.app operations. Do NOT use Linear MCP tools - CL
 | Flag | Purpose |
 |------|---------|
 | `--output json` | Machine-readable JSON output |
+| `--compact` | Compact JSON output (no pretty formatting) |
+| `--fields a,b,c` | Limit JSON output to selected fields (supports dot paths) |
+| `--sort field` | Sort JSON array output by field (default: identifier/id) |
+| `--order asc|desc` | Sort order for JSON array output |
 | `--quiet` | Suppress decorative output |
 | `--id-only` | Only output created/updated ID |
+| `--api-key KEY` | Override API key for this invocation |
 | `--dry-run` | Preview without executing (create) |
 | `-` (stdin) | Read description/IDs from pipe |
 
@@ -49,8 +54,17 @@ linear-cli i get LIN-1 LIN-2 LIN-3 --output json
 # Pipe description from file
 cat desc.md | linear-cli i create "Title" -t ENG -d -
 
+# JSON input for issue create/update
+cat issue.json | linear-cli i create "Title" -t ENG --data -
+
 # Structured error handling
 linear-cli i get INVALID --output json  # Returns {"error": true, ...}
+
+# Token-saving JSON output
+linear-cli i list --output json --fields identifier,title,state.name --compact
+
+# Default JSON output for agent sessions
+LINEAR_CLI_OUTPUT=json linear-cli i list
 ```
 
 ### Exit Codes
@@ -58,6 +72,7 @@ linear-cli i get INVALID --output json  # Returns {"error": true, ...}
 - `1` = General error
 - `2` = Not found
 - `3` = Auth error
+- `4` = Rate limited
 
 ### Tips
 - Use short aliases: `i` (issues), `p` (projects), `g` (git), `s` (search), `cm` (comments), `ctx` (context)

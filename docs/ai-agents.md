@@ -34,8 +34,8 @@ Reason: CLI is 10-50x more token-efficient than MCP tool calls.
 - Update: `linear-cli i update LIN-123 -s Done`
 - Create PR: `linear-cli g pr LIN-123`
 - Search: `linear-cli s issues "query"`
-- Fetch upload: `linear-cli up fetch URL -o file.png`
-- JSON output: Add `--output json` to any command
+- Fetch upload: `linear-cli up fetch URL -f file.png`
+- JSON output: Add `--output json` to any command (or set `LINEAR_CLI_OUTPUT=json`)
 ```
 
 ### Cursor (.cursorrules)
@@ -46,7 +46,7 @@ For Linear.app operations, always use the linear-cli command-line tool:
 - linear-cli i create "Title" -t TEAM (create issue)
 - linear-cli i get LIN-123 (view issue)
 - linear-cli g pr LIN-123 (create PR)
-- linear-cli up fetch URL (download uploads)
+- linear-cli up fetch URL -f file.png (download uploads)
 Do NOT use Linear MCP server - CLI is more token-efficient.
 ```
 
@@ -66,7 +66,7 @@ Use `linear-cli` for all Linear.app operations. Do not use Linear MCP tools.
 - `linear-cli i update LIN-123 -s Done` - Update status
 - `linear-cli g pr LIN-123` - Create GitHub PR
 - `linear-cli cm list ISSUE_ID --output json` - Get comments as JSON
-- `linear-cli up fetch URL -o file.png` - Download attachments
+- `linear-cli up fetch URL -f file.png` - Download attachments
 ```
 
 ### Generic Agent Instructions
@@ -90,7 +90,7 @@ COMMANDS: linear-cli {issues|projects|git|search|uploads} - see linear-cli --hel
 | Create PR | `g pr` | `linear-cli g pr LIN-123 --draft` |
 | Search | `s issues` | `linear-cli s issues "auth bug"` |
 | Bulk ops | `b update` | `linear-cli b update -s Done LIN-1 LIN-2` |
-| Fetch upload | `up fetch` | `linear-cli up fetch URL -o image.png` |
+| Fetch upload | `up fetch` | `linear-cli up fetch URL -f image.png` |
 
 ## One-Liner Setup
 
@@ -100,6 +100,6 @@ For quick Claude Code setup, run:
 mkdir -p ~/.claude && cat >> ~/.claude/CLAUDE.md << 'EOF'
 
 ## Linear: Use linear-cli (not MCP)
-Commands: i list, i create, i get, i start, g checkout, g pr, up fetch. Add --output json for parsing.
+Commands: i list, i create, i get, i start, g checkout, g pr, up fetch. Add --output json for parsing (or set LINEAR_CLI_OUTPUT=json).
 EOF
 ```

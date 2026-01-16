@@ -1,5 +1,12 @@
 # Usage Examples
 
+## Common Tasks
+
+```bash
+linear-cli common
+linear-cli tasks
+```
+
 ## Projects
 
 ```bash
@@ -21,6 +28,7 @@ linear-cli i list --output json                # Output as JSON
 linear-cli i get LIN-123                       # View issue details
 linear-cli i get LIN-123 --output json         # JSON output
 linear-cli i create "Bug fix" -t Eng -p 1      # Priority: 1=urgent, 4=low
+cat issue.json | linear-cli i create "Bug fix" -t Eng --data -
 linear-cli i update LIN-123 -s Done
 linear-cli i delete LIN-123 --force
 linear-cli i start LIN-123                     # Start working: assigns to you, sets In Progress, creates branch
@@ -79,13 +87,13 @@ Download attachments and images from Linear issues/comments:
 
 ```bash
 # Download to file
-linear-cli up fetch "https://uploads.linear.app/..." -o image.png
+linear-cli up fetch "https://uploads.linear.app/..." -f image.png
 
 # Output to stdout (for piping to other tools)
 linear-cli up fetch "https://uploads.linear.app/..." | base64
 
 # Useful for AI agents that need to view images
-linear-cli uploads fetch URL -o /tmp/screenshot.png
+linear-cli uploads fetch URL -f /tmp/screenshot.png
 ```
 
 ## Other Commands
@@ -126,6 +134,7 @@ linear-cli config show
 
 ```bash
 linear-cli ui                                  # Launch interactive TUI
+linear-cli ui --team ENG                       # Launch with preselected team
 linear-cli ui issues                           # Browse issues interactively
 linear-cli ui projects                         # Browse projects interactively
 linear-cli interactive --team Engineering      # Filter by team
@@ -160,4 +169,15 @@ linear-cli p list --output json | jq '.[] | .name'
 linear-cli i get LIN-123 --output json
 linear-cli t list --output json
 linear-cli cm list ISSUE_ID --output json    # Comments as JSON (great for LLMs)
+
+# Token-saving JSON output options
+linear-cli i list --output json --fields identifier,title,state.name --compact
+LINEAR_CLI_OUTPUT=json linear-cli i list --sort identifier --order desc
+
+# Color control for logs/CI
+linear-cli i list --no-color
+
+# Table width control
+linear-cli i list --width 80
+linear-cli i list --no-truncate
 ```

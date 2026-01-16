@@ -20,8 +20,13 @@ Use `linear-cli` for all Linear.app operations. Do not use Linear MCP tools.
 
 ### Agent-Friendly Flags
 - `--output json` - Machine-readable output
+- `--compact` - Compact JSON output (no pretty formatting)
+- `--fields a,b,c` - Limit JSON output to selected fields (supports dot paths)
+- `--sort field` - Sort JSON array output by field (default: identifier/id)
+- `--order asc|desc` - Sort order for JSON array output
 - `--quiet` or `-q` - Suppress decorative output
 - `--id-only` - Output only created/updated ID
+- `--api-key KEY` - Override API key for this invocation
 - `--dry-run` - Preview without executing (create)
 - `-d -` - Read description from stdin
 
@@ -30,7 +35,10 @@ Use `linear-cli` for all Linear.app operations. Do not use Linear MCP tools.
 - 1 = General error
 - 2 = Not found
 - 3 = Auth error
+- 4 = Rate limited
 
 ### Notes
-- Errors with `--output json` return `{"error": true, "message": "...", "code": N}`
+- Set `LINEAR_CLI_OUTPUT=json` to default all output to JSON
+- Errors with `--output json` return `{"error": true, "message": "...", "code": N, "details": {...}, "retry_after": N}`
+- `linear-cli i create/update` accept `--data` JSON input (use `-` for stdin)
 - Use `--help` on any command for full options

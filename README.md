@@ -62,6 +62,7 @@ linear-cli g pr LIN-123
 | `sync` | `sy` | Sync local folders with Linear |
 | `interactive` | `ui` | Interactive TUI mode |
 | `config` | - | CLI configuration |
+| `common` | `tasks` | Common tasks and examples |
 
 Run `linear-cli <command> --help` for detailed usage.
 
@@ -80,9 +81,7 @@ linear-cli g pr LIN-123 --draft            # Create draft PR
 # Search
 linear-cli s issues "auth bug"             # Search issues
 
-# JSON output (great for AI agents)
-linear-cli i get LIN-123 --output json
-linear-cli cm list ISSUE_ID --output json
+# JSON output (great for AI agents)\nlinear-cli i get LIN-123 --output json\nlinear-cli cm list ISSUE_ID --output json\n\n# Disable color for logs/CI\nlinear-cli i list --no-color
 ```
 
 See [docs/examples.md](docs/examples.md) for comprehensive examples.
@@ -109,16 +108,15 @@ Config stored at `~/.config/linear-cli/config.toml` (Linux/macOS) or `%APPDATA%\
 
 ## Comparison with Other CLIs
 
-| Feature | `@linear/cli` | `linear-go` | `linear-cli` |
+| Feature | @linear/cli | linear-go | linear-cli |
 |---------|---------------|-------------|--------------|
 | Last updated | 2021 | 2023 | 2025 |
-| Git PR creation | ✗ | ✗ | ✓ |
-| jj (Jujutsu) support | ✗ | ✗ | ✓ |
-| Interactive TUI | ✗ | ✗ | ✓ |
-| Bulk operations | ✗ | ✗ | ✓ |
-| Multiple workspaces | ✗ | ✗ | ✓ |
-| JSON output | ✗ | ✓ | ✓ |
-
+| Git PR creation | No | No | Yes |
+| jj (Jujutsu) support | No | No | Yes |
+| Interactive TUI | No | No | Yes |
+| Bulk operations | No | No | Yes |
+| Multiple workspaces | No | No | Yes |
+| JSON output | No | Yes | Yes |
 ## Contributing
 
 Contributions welcome! Please open an issue or submit a pull request.
@@ -126,3 +124,5 @@ Contributions welcome! Please open an issue or submit a pull request.
 ## License
 
 [MIT](LICENSE)
+
+
