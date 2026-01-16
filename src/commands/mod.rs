@@ -1,8 +1,10 @@
+pub mod auth;
 pub mod bulk;
 pub mod cache;
 pub mod comments;
 pub mod cycles;
 pub mod documents;
+pub mod doctor;
 pub mod git;
 pub mod interactive;
 pub mod issues;

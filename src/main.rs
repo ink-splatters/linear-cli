@@ -4,18 +4,20 @@ mod commands;
 mod config;
 mod error;
 mod output;
+mod pagination;
 mod text;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 use commands::{
-    bulk, comments, cycles, documents, git, interactive, issues, labels, notifications, projects,
-    search, statuses, sync, teams, templates, time, uploads, users,
+    auth, bulk, comments, cycles, documents, doctor, git, interactive, issues, labels,
+    notifications, projects, search, statuses, sync, teams, templates, time, uploads, users,
 };
 use error::CliError;
 use output::print_json;
-use output::{JsonOutputOptions, OutputOptions, SortOrder};
+use output::{parse_filters, JsonOutputOptions, OutputOptions, SortOrder};
+use pagination::PaginationOptions;
 use std::sync::OnceLock;
 
 /// Output format for command results
@@ -26,6 +28,8 @@ pub enum OutputFormat {
     Table,
     /// Display results as raw JSON
     Json,
+    /// Display results as NDJSON (one JSON object per line)
+    Ndjson,
 }
 
 #[derive(Debug, Clone, Copy, Default, ValueEnum, PartialEq)]
@@ -43,6 +47,8 @@ pub struct AgentOptions {
     pub quiet: bool,
     /// Only output IDs of created/updated resources
     pub id_only: bool,
+    /// Preview without making changes (where supported)
+    pub dry_run: bool,
 }
 
 #[derive(Parser)]
@@ -61,12 +67,23 @@ pub struct AgentOptions {
        linear issues create "Fix bug" --team ENG --priority 2
 
 COMMON FLAGS:
-    --output table|json           Output format (default: table)
+    --output table|json|ndjson    Output format (default: table)
     --color auto|always|never     Color output control
     --no-color                    Disable color output
     --width N                     Max table column width
     --no-truncate                 Disable table truncation
     --quiet                       Reduce decorative output
+    --format TEMPLATE             Template output (e.g. '{{identifier}} {{title}}')
+    --filter field=value          Filter results (repeatable)
+    --limit N                     Limit list/search results
+    --page-size N                 Page size for list/search
+    --after CURSOR                Pagination cursor (after)
+    --before CURSOR               Pagination cursor (before)
+    --all                         Fetch all pages
+    --profile NAME                Use named profile
+    --schema                      Print JSON schema version and exit
+    --cache-ttl N                 Cache TTL in seconds
+    --no-cache                    Disable cache usage
 
 For more info on a command, run: linear <command> --help"#)]
 struct Cli {
@@ -130,6 +147,58 @@ struct Cli {
     #[arg(long, global = true, env = "LINEAR_API_KEY")]
     api_key: Option<String>,
 
+    /// Override workspace profile for this invocation
+    #[arg(long, global = true, env = "LINEAR_CLI_PROFILE")]
+    profile: Option<String>,
+
+    /// Output using a template (e.g. '{{identifier}} {{title}}')
+    #[arg(long, global = true)]
+    format: Option<String>,
+
+    /// Filter results (field=value, field!=value, field~=value)
+    #[arg(long, global = true)]
+    filter: Vec<String>,
+
+    /// Exit with non-zero status when a list is empty
+    #[arg(long, global = true)]
+    fail_on_empty: bool,
+
+    /// Max results to return for list/search commands
+    #[arg(long, global = true)]
+    limit: Option<usize>,
+
+    /// Pagination cursor to start after
+    #[arg(long, global = true)]
+    after: Option<String>,
+
+    /// Pagination cursor to end before
+    #[arg(long, global = true)]
+    before: Option<String>,
+
+    /// Page size per request for list/search commands
+    #[arg(long, global = true)]
+    page_size: Option<usize>,
+
+    /// Fetch all pages for list/search commands
+    #[arg(long, global = true)]
+    all: bool,
+
+    /// Override cache TTL in seconds
+    #[arg(long, global = true, env = "LINEAR_CLI_CACHE_TTL")]
+    cache_ttl: Option<u64>,
+
+    /// Disable cache usage for this invocation
+    #[arg(long, global = true, env = "LINEAR_CLI_NO_CACHE")]
+    no_cache: bool,
+
+    /// Preview without making changes where supported
+    #[arg(long, global = true)]
+    dry_run: bool,
+
+    /// Print JSON schema version info and exit
+    #[arg(long, global = true)]
+    schema: bool,
+
     /// Show common tasks and examples
     #[command(subcommand)]
     command: Commands,
@@ -168,6 +237,24 @@ enum Commands {
     Common,
     /// Show agent-focused capabilities and examples
     Agent,
+    /// Authenticate and manage API keys
+    #[command(after_help = r#"EXAMPLES:
+    linear auth login                        # Store API key
+    linear auth status                       # Show auth status
+    linear auth logout                       # Remove current profile"#)]
+    Auth {
+        #[command(subcommand)]
+        action: auth::AuthCommands,
+    },
+    /// Diagnose configuration and connectivity
+    #[command(after_help = r#"EXAMPLES:
+    linear doctor                            # Check config and auth
+    linear doctor --check-api                # Validate API access"#)]
+    Doctor {
+        /// Validate API connectivity and auth
+        #[arg(long)]
+        check_api: bool,
+    },
     /// Manage projects - list, create, update, delete projects
     #[command(alias = "p")]
     #[command(after_help = r#"EXAMPLES:
@@ -373,6 +460,9 @@ Detects issue ID from branch names like:
     /// Configure CLI settings - API keys and workspaces
     #[command(after_help = r#"EXAMPLES:
     linear config set-key YOUR_API_KEY      # Set API key
+    linear config set api-key YOUR_API_KEY  # Set API key (alt)
+    linear config get api-key               # Get API key (masked)
+    linear config set profile work          # Switch profile
     linear config show                      # Show configuration
     linear config workspace-add work KEY    # Add workspace
     linear config workspace-switch work     # Switch workspace"#)]
@@ -390,6 +480,21 @@ enum ConfigCommands {
     SetKey {
         /// Your Linear API key
         key: String,
+    },
+    /// Get a configuration value
+    Get {
+        /// Config key to retrieve (api-key, profile)
+        key: String,
+        /// Output raw value without masking
+        #[arg(long)]
+        raw: bool,
+    },
+    /// Set a configuration value
+    Set {
+        /// Config key to set (api-key, profile)
+        key: String,
+        /// Value to set
+        value: String,
     },
     /// Show current configuration
     Show,
@@ -437,7 +542,7 @@ enum ConfigCommands {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     if cli.no_color || cli.color == ColorChoice::Never {
         colored::control::set_override(false);
@@ -451,6 +556,17 @@ async fn main() {
     if let Some(key) = cli.api_key.as_deref() {
         std::env::set_var("LINEAR_API_KEY", key);
     }
+    if let Some(profile) = cli.profile.as_deref() {
+        std::env::set_var("LINEAR_CLI_PROFILE", profile);
+    }
+    let filters = parse_filters(&cli.filter)?;
+    let pagination = PaginationOptions {
+        limit: cli.limit,
+        after: cli.after.clone(),
+        before: cli.before.clone(),
+        page_size: cli.page_size,
+        all: cli.all,
+    };
     let json_opts = JsonOutputOptions::new(
         cli.compact,
         if cli.fields.is_empty() {
@@ -465,11 +581,36 @@ async fn main() {
     let output = OutputOptions {
         format: cli.output,
         json: json_opts,
+        format_template: cli.format.clone(),
+        filters,
+        fail_on_empty: cli.fail_on_empty,
+        pagination,
+        cache: cache::CacheOptions {
+            ttl_seconds: cli.cache_ttl,
+            no_cache: cli.no_cache,
+        },
+        dry_run: cli.dry_run,
     };
     let agent_opts = AgentOptions {
         quiet: cli.quiet,
         id_only: cli.id_only,
+        dry_run: cli.dry_run,
     };
+
+    if cli.schema {
+        let schema = serde_json::json!({
+            "schema_version": "1.0",
+            "schema_file": "docs/json/schema.json",
+        });
+        if matches!(cli.output, OutputFormat::Ndjson) {
+            println!("{}", serde_json::to_string(&schema)?);
+        } else if cli.compact {
+            println!("{}", serde_json::to_string(&schema)?);
+        } else {
+            println!("{}", serde_json::to_string_pretty(&schema)?);
+        }
+        std::process::exit(0);
+    }
 
     let result = run_command(cli.command, &output, agent_opts).await;
 
@@ -495,6 +636,8 @@ async fn main() {
                         "error": true,
                         "message": e.to_string(),
                         "code": categorize_error(&e),
+                        "details": null,
+                        "retry_after": null,
                     });
                     eprintln!(
                         "{}",
@@ -507,6 +650,9 @@ async fn main() {
             std::process::exit(categorize_error(&e) as i32);
         }
     }
+
+    #[allow(unreachable_code)]
+    Ok(())
 }
 
 /// Categorize error for exit codes: 1=general error, 2=not found, 3=auth error
@@ -549,25 +695,29 @@ async fn run_command(
             println!();
             println!("Tips:");
             println!("  Use --help after any command for more options.");
-            println!("  Use --output json for scripting/LLMs.");
+            println!("  Use --output json or --output ndjson for scripting/LLMs.");
             println!("  Use --no-color for logs/CI.");
+            println!("  Use --limit/--page-size/--all for pagination.");
         }
         Commands::Agent => {
             println!("Agent harness:");
-            println!("  Use --output json for machine-readable output.");
+            println!("  Use --output json or --output ndjson for machine-readable output.");
             println!("  Use --compact and --fields to reduce tokens.");
             println!("  Use --sort/--order to stabilize list outputs.");
+            println!("  Use --filter to reduce list results.");
             println!("  Use --id-only for chaining create/update commands.");
             println!("  Use --data - for JSON input on issue create/update.");
             println!();
             println!("Examples:");
             println!("  linear issues list --output json --compact --fields identifier,title");
+            println!("  linear issues list --output ndjson --filter state.name=In\\ Progress");
             println!("  linear issues get LIN-123 --output json");
             println!("  linear issues update LIN-123 --data - --dry-run");
             println!("  linear context --output json --id-only");
             println!();
             println!("Schemas:");
             println!("  See docs/json/ for sample outputs.");
+            println!("  Use --schema to print the current schema version.");
         }
         Commands::Projects { action } => projects::handle(action, output).await?,
         Commands::Issues { action } => issues::handle(action, output, agent_opts).await?,
@@ -589,12 +739,20 @@ async fn run_command(
         Commands::Uploads { action } => uploads::handle(action).await?,
         Commands::Interactive { team } => interactive::run(team).await?,
         Commands::Context => handle_context(output, agent_opts).await?,
+        Commands::Auth { action } => auth::handle(action, output).await?,
+        Commands::Doctor { check_api } => doctor::run(output, check_api).await?,
         Commands::Config { action } => match action {
             ConfigCommands::SetKey { key } => {
                 config::set_api_key(&key)?;
                 if !agent_opts.quiet {
                     println!("API key saved successfully!");
                 }
+            }
+            ConfigCommands::Get { key, raw } => {
+                config::config_get(&key, raw)?;
+            }
+            ConfigCommands::Set { key, value } => {
+                config::config_set(&key, &value)?;
             }
             ConfigCommands::Show => {
                 config::show_config()?;
@@ -648,9 +806,9 @@ async fn handle_context(output: &OutputOptions, agent_opts: AgentOptions) -> Res
         .map(|m| m.as_str().to_uppercase())
         .ok_or_else(|| anyhow::anyhow!("No Linear issue ID found in branch: {}", branch))?;
 
-    if output.is_json() {
+    if output.is_json() || output.has_template() {
         if agent_opts.id_only {
-            print_json(&serde_json::json!(issue_id), &output.json)?;
+            print_json(&serde_json::json!(issue_id), output)?;
             return Ok(());
         }
         // Fetch issue details for JSON output
@@ -683,7 +841,7 @@ async fn handle_context(output: &OutputOptions, agent_opts: AgentOptions) -> Res
                             "issue_id": issue_id,
                             "found": false,
                         }),
-                        &output.json,
+                        output,
                     )?;
                 } else {
                     print_json(
@@ -693,7 +851,7 @@ async fn handle_context(output: &OutputOptions, agent_opts: AgentOptions) -> Res
                             "found": true,
                             "issue": issue,
                         }),
-                        &output.json,
+                        output,
                     )?;
                 }
             }
@@ -704,7 +862,7 @@ async fn handle_context(output: &OutputOptions, agent_opts: AgentOptions) -> Res
                         "issue_id": issue_id,
                         "found": false,
                     }),
-                    &output.json,
+                    output,
                 )?;
             }
         }
