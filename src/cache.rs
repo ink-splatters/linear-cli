@@ -2,8 +2,11 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use crate::config;
 
 /// Default cache TTL in seconds (1 hour)
 const DEFAULT_TTL_SECONDS: u64 = 3600;
@@ -118,12 +121,14 @@ impl Cache {
         })
     }
 
-    /// Get the cache directory path
+    /// Get the cache directory path, scoped by workspace/profile
     fn cache_dir() -> Result<PathBuf> {
+        let profile = config::current_profile().unwrap_or_else(|_| "default".to_string());
         let config_dir = dirs::config_dir()
             .context("Could not find config directory")?
             .join("linear-cli")
-            .join("cache");
+            .join("cache")
+            .join(profile);
         Ok(config_dir)
     }
 
@@ -162,7 +167,7 @@ impl Cache {
         serde_json::from_str(&content).ok()
     }
 
-    /// Set cached data
+    /// Set cached data using atomic file writes
     pub fn set(&self, cache_type: CacheType, data: Value) -> Result<()> {
         let path = self.cache_path(cache_type);
         let timestamp = SystemTime::now()
@@ -177,7 +182,15 @@ impl Cache {
         };
 
         let content = serde_json::to_string_pretty(&entry)?;
-        fs::write(path, content)?;
+
+        // Atomic write: write to temp file, sync, then rename
+        let temp_path = path.with_extension("tmp");
+        let mut file = fs::File::create(&temp_path)?;
+        file.write_all(content.as_bytes())?;
+        file.sync_all()?;
+
+        // Atomic rename (overwrites atomically on both Unix and Windows)
+        fs::rename(&temp_path, &path)?;
         Ok(())
     }
 
@@ -263,10 +276,12 @@ impl Cache {
 }
 
 pub fn cache_dir_path() -> Result<PathBuf> {
+    let profile = config::current_profile().unwrap_or_else(|_| "default".to_string());
     let config_dir = dirs::config_dir()
         .context("Could not find config directory")?
         .join("linear-cli")
-        .join("cache");
+        .join("cache")
+        .join(profile);
     Ok(config_dir)
 }
 
