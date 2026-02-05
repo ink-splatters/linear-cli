@@ -5,7 +5,7 @@ use serde_json::{json, Map, Value};
 use std::io::{self, BufRead};
 use tabled::{Table, Tabled};
 
-use crate::api::{resolve_team_id, LinearClient};
+use crate::api::{resolve_label_id, resolve_team_id, resolve_user_id, LinearClient};
 use crate::display_options;
 use crate::input::read_ids_from_stdin;
 use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
@@ -737,11 +737,13 @@ async fn create_issue(
         input["stateId"] = json!(s);
     }
     if let Some(ref a) = assignee {
-        input["assigneeId"] = json!(a);
+        // Resolve user name/email to UUID
+        let assignee_id = resolve_user_id(&client, a, &output.cache).await?;
+        input["assigneeId"] = json!(assignee_id);
     }
     if !labels.is_empty() {
-        // Merge with template labels if present
-        let existing: Vec<String> = input["labelIds"]
+        // Resolve label names to UUIDs
+        let mut label_ids: Vec<String> = input["labelIds"]
             .as_array()
             .map(|arr| {
                 arr.iter()
@@ -749,9 +751,11 @@ async fn create_issue(
                     .collect()
             })
             .unwrap_or_default();
-        let mut all_labels = existing;
-        all_labels.extend(labels.clone());
-        input["labelIds"] = json!(all_labels);
+        for label in &labels {
+            let label_id = resolve_label_id(&client, label, &output.cache).await?;
+            label_ids.push(label_id);
+        }
+        input["labelIds"] = json!(label_ids);
     }
     if let Some(ref d) = due {
         // Parse due date shorthand
@@ -914,10 +918,18 @@ async fn update_issue(
         input["stateId"] = json!(s);
     }
     if let Some(a) = assignee {
-        input["assigneeId"] = json!(a);
+        // Resolve user name/email to UUID
+        let assignee_id = resolve_user_id(&client, &a, &output.cache).await?;
+        input["assigneeId"] = json!(assignee_id);
     }
     if !labels.is_empty() {
-        input["labelIds"] = json!(labels);
+        // Resolve label names to UUIDs
+        let mut label_ids = Vec::new();
+        for label in &labels {
+            let label_id = resolve_label_id(&client, label, &output.cache).await?;
+            label_ids.push(label_id);
+        }
+        input["labelIds"] = json!(label_ids);
     }
     if let Some(ref d) = due {
         // Support clearing due date with "none"

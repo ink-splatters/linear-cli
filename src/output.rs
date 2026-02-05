@@ -369,7 +369,15 @@ impl SortKey {
 }
 
 fn extract_sort_key(value: &Value, key: &str) -> SortKey {
-    let v = match value.get(key) {
+    // Support nested paths like "state.name"
+    let v = if key.contains('.') {
+        let parts: Vec<&str> = key.split('.').filter(|p| !p.is_empty()).collect();
+        get_path(value, &parts).cloned()
+    } else {
+        value.get(key).cloned()
+    };
+
+    let v = match v {
         Some(v) => v,
         None => return SortKey::Null,
     };
@@ -386,7 +394,7 @@ fn extract_sort_key(value: &Value, key: &str) -> SortKey {
         }
         Value::String(s) => {
             // Try parsing as RFC3339 date
-            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&s) {
                 SortKey::DateTime(dt.timestamp())
             } else {
                 SortKey::String(s.to_lowercase())
@@ -457,6 +465,7 @@ fn set_path(out: &mut Map<String, Value>, parts: &[&str], value: Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_parse_filter_eq() {
@@ -521,6 +530,32 @@ mod tests {
     #[test]
     fn test_sort_order_default() {
         assert_eq!(SortOrder::default(), SortOrder::Asc);
+    }
+
+    #[test]
+    fn test_sort_nested_path() {
+        let mut values = vec![
+            json!({"name": "Charlie", "state": {"name": "Done"}}),
+            json!({"name": "Alice", "state": {"name": "Backlog"}}),
+            json!({"name": "Bob", "state": {"name": "In Progress"}}),
+        ];
+        sort_values(&mut values, "state.name", SortOrder::Asc);
+        assert_eq!(values[0]["state"]["name"], "Backlog");
+        assert_eq!(values[1]["state"]["name"], "Done");
+        assert_eq!(values[2]["state"]["name"], "In Progress");
+    }
+
+    #[test]
+    fn test_sort_top_level_field() {
+        let mut values = vec![
+            json!({"priority": 3}),
+            json!({"priority": 1}),
+            json!({"priority": 2}),
+        ];
+        sort_values(&mut values, "priority", SortOrder::Asc);
+        assert_eq!(values[0]["priority"], 1);
+        assert_eq!(values[1]["priority"], 2);
+        assert_eq!(values[2]["priority"], 3);
     }
 }
 

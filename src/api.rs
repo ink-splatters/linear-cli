@@ -344,11 +344,24 @@ impl LinearClient {
 
         let status = response.status();
         let headers = response.headers().clone();
-        let result: Value = response.json().await?;
 
+        // Check HTTP status before parsing JSON to avoid confusing errors
         if !status.is_success() {
-            return Err(http_error(status, &headers, "resource").into());
+            // Try to get error details from response body
+            let body = response.text().await.unwrap_or_default();
+            let details = if let Ok(json) = serde_json::from_str::<Value>(&body) {
+                json
+            } else {
+                json!({ "body": body })
+            };
+            let mut err = http_error(status, &headers, "resource");
+            if !body.is_empty() {
+                err = err.with_details(details);
+            }
+            return Err(err.into());
         }
+
+        let result: Value = response.json().await?;
 
         if let Some(errors) = result.get("errors") {
             return Err(CliError::new(1, "GraphQL error")

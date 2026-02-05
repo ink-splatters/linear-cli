@@ -207,7 +207,12 @@ impl Cache {
             file.sync_all()?;
         }
 
-        // Atomic rename (overwrites atomically on both Unix and Windows)
+        // Atomic rename
+        // On Windows, fs::rename fails if the destination exists, so remove it first
+        #[cfg(windows)]
+        {
+            let _ = fs::remove_file(&path);
+        }
         fs::rename(&temp_path, &path)?;
         Ok(())
     }
