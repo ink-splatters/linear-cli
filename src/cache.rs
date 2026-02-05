@@ -184,10 +184,28 @@ impl Cache {
         let content = serde_json::to_string_pretty(&entry)?;
 
         // Atomic write: write to temp file, sync, then rename
+        // Use secure permissions on Unix (0600)
         let temp_path = path.with_extension("tmp");
-        let mut file = fs::File::create(&temp_path)?;
-        file.write_all(content.as_bytes())?;
-        file.sync_all()?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&temp_path)?;
+            file.write_all(content.as_bytes())?;
+            file.sync_all()?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            let mut file = fs::File::create(&temp_path)?;
+            file.write_all(content.as_bytes())?;
+            file.sync_all()?;
+        }
 
         // Atomic rename (overwrites atomically on both Unix and Windows)
         fs::rename(&temp_path, &path)?;
