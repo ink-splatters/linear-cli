@@ -14,6 +14,81 @@ use std::sync::OnceLock;
 
 const LINEAR_API_URL: &str = "https://api.linear.app/graphql";
 
+/// Configuration for generic ID resolution
+struct ResolverConfig<'a> {
+    cache_type: CacheType,
+    filtered_query: &'a str,
+    filtered_var_name: &'a str,
+    filtered_nodes_path: &'a [&'a str],
+    paginated_query: &'a str,
+    paginated_nodes_path: &'a [&'a str],
+    paginated_page_info_path: &'a [&'a str],
+    not_found_msg: &'a str,
+}
+
+/// Generic ID resolver that handles cache, filtered query, and paginated fallback
+async fn resolve_id<F>(
+    client: &LinearClient,
+    input: &str,
+    cache_opts: &CacheOptions,
+    config: &ResolverConfig<'_>,
+    finder: F,
+) -> Result<String>
+where
+    F: Fn(&[Value], &str) -> Option<String>,
+{
+    // Check cache first
+    if !cache_opts.no_cache {
+        let cache = Cache::new()?;
+        if let Some(cached) = cache.get(config.cache_type).and_then(|data| data.as_array().cloned()) {
+            if let Some(id) = finder(&cached, input) {
+                return Ok(id);
+            }
+        }
+    }
+
+    // Try filtered query first (fast path)
+    let result = client.query(config.filtered_query, Some(json!({ config.filtered_var_name: input }))).await?;
+    let empty = vec![];
+    let nodes = get_nested_array(&result, config.filtered_nodes_path).unwrap_or(&empty);
+
+    if let Some(id) = finder(nodes, input) {
+        return Ok(id);
+    }
+
+    // Fallback: paginate through all items
+    let pagination = PaginationOptions { all: true, page_size: Some(250), ..Default::default() };
+    let all_items = paginate_nodes(
+        client,
+        config.paginated_query,
+        serde_json::Map::new(),
+        config.paginated_nodes_path,
+        config.paginated_page_info_path,
+        &pagination,
+        250,
+    ).await?;
+
+    if !cache_opts.no_cache {
+        let cache = Cache::with_ttl(cache_opts.effective_ttl_seconds())?;
+        let _ = cache.set(config.cache_type, json!(all_items));
+    }
+
+    if let Some(id) = finder(&all_items, input) {
+        return Ok(id);
+    }
+
+    anyhow::bail!("{}", config.not_found_msg)
+}
+
+/// Helper to get nested array from JSON value
+fn get_nested_array<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Vec<Value>> {
+    let mut current = value;
+    for key in path {
+        current = current.get(*key)?;
+    }
+    current.as_array()
+}
+
 /// Build a CliError from HTTP status code and headers
 fn http_error(status: StatusCode, headers: &HeaderMap, context: &str) -> CliError {
     let retry_after = headers
@@ -54,88 +129,38 @@ pub async fn resolve_team_id(client: &LinearClient, team: &str, cache_opts: &Cac
         return Ok(team.to_string());
     }
 
-    // Check cache first
-    if !cache_opts.no_cache {
-        let cache = Cache::new()?;
-        if let Some(cached) = cache.get(CacheType::Teams).and_then(|data| data.as_array().cloned()) {
-            if let Some(id) = find_team_id(&cached, team) {
-                return Ok(id);
-            }
-        }
-    }
-
-    // Try filtered query first (fast path)
-    let query = r#"
-        query($team: String!) {
-            teams(first: 50, filter: { or: [{ key: { eqIgnoreCase: $team } }, { name: { eqIgnoreCase: $team } }] }) {
-                nodes {
-                    id
-                    key
-                    name
+    let config = ResolverConfig {
+        cache_type: CacheType::Teams,
+        filtered_query: r#"
+            query($team: String!) {
+                teams(first: 50, filter: { or: [{ key: { eqIgnoreCase: $team } }, { name: { eqIgnoreCase: $team } }] }) {
+                    nodes { id key name }
                 }
             }
-        }
-    "#;
-
-    let result = client.query(query, Some(json!({ "team": team }))).await?;
-    let empty = vec![];
-    let teams = result["data"]["teams"]["nodes"].as_array().unwrap_or(&empty);
-
-    if let Some(id) = find_team_id(teams, team) {
-        return Ok(id);
-    }
-
-    // Fallback: paginate through all teams (handles orgs with >500 teams)
-    let query_all = r#"
-        query($first: Int, $after: String) {
-            teams(first: $first, after: $after) {
-                nodes {
-                    id
-                    key
-                    name
-                }
-                pageInfo {
-                    hasNextPage
-                    endCursor
+        "#,
+        filtered_var_name: "team",
+        filtered_nodes_path: &["data", "teams", "nodes"],
+        paginated_query: r#"
+            query($first: Int, $after: String) {
+                teams(first: $first, after: $after) {
+                    nodes { id key name }
+                    pageInfo { hasNextPage endCursor }
                 }
             }
-        }
-    "#;
+        "#,
+        paginated_nodes_path: &["data", "teams", "nodes"],
+        paginated_page_info_path: &["data", "teams", "pageInfo"],
+        not_found_msg: &format!("Team not found: {}. Use linear-cli t list to see available teams.", team),
+    };
 
-    let pagination = PaginationOptions { all: true, page_size: Some(250), ..Default::default() };
-    let all_teams = paginate_nodes(
-        client,
-        query_all,
-        serde_json::Map::new(),
-        &["data", "teams", "nodes"],
-        &["data", "teams", "pageInfo"],
-        &pagination,
-        250,
-    ).await?;
-
-    if !cache_opts.no_cache {
-        let cache = Cache::with_ttl(cache_opts.effective_ttl_seconds())?;
-        let _ = cache.set(CacheType::Teams, json!(all_teams));
-    }
-
-    if let Some(id) = find_team_id(&all_teams, team) {
-        return Ok(id);
-    }
-
-    anyhow::bail!("Team not found: {}. Use linear-cli t list to see available teams.", team)
+    resolve_id(client, team, cache_opts, &config, find_team_id).await
 }
 
 /// Resolve a user identifier to a UUID.
 /// Handles "me", UUIDs, names, and emails.
 pub async fn resolve_user_id(client: &LinearClient, user: &str, cache_opts: &CacheOptions) -> Result<String> {
     if user.eq_ignore_ascii_case("me") {
-        let query = r#"
-            query {
-                viewer {
-                    id
-                }
-            }
-        "#;
+        let query = r#"query { viewer { id } }"#;
         let result = client.query(query, None).await?;
         let user_id = result["data"]["viewer"]["id"]
             .as_str()
@@ -147,75 +172,31 @@ pub async fn resolve_user_id(client: &LinearClient, user: &str, cache_opts: &Cac
         return Ok(user.to_string());
     }
 
-    // Check cache first
-    if !cache_opts.no_cache {
-        let cache = Cache::new()?;
-        if let Some(cached) = cache.get(CacheType::Users).and_then(|data| data.as_array().cloned()) {
-            if let Some(id) = find_user_id(&cached, user) {
-                return Ok(id);
-            }
-        }
-    }
-
-    // Try filtered query first (fast path)
-    let query = r#"
-        query($user: String!) {
-            users(first: 50, filter: { or: [{ name: { eqIgnoreCase: $user } }, { email: { eqIgnoreCase: $user } }] }) {
-                nodes {
-                    id
-                    name
-                    email
+    let config = ResolverConfig {
+        cache_type: CacheType::Users,
+        filtered_query: r#"
+            query($user: String!) {
+                users(first: 50, filter: { or: [{ name: { eqIgnoreCase: $user } }, { email: { eqIgnoreCase: $user } }] }) {
+                    nodes { id name email }
                 }
             }
-        }
-    "#;
-
-    let result = client.query(query, Some(json!({ "user": user }))).await?;
-    let empty = vec![];
-    let users = result["data"]["users"]["nodes"].as_array().unwrap_or(&empty);
-
-    if let Some(id) = find_user_id(users, user) {
-        return Ok(id);
-    }
-
-    // Fallback: paginate through all users (handles orgs with >500 users)
-    let query_all = r#"
-        query($first: Int, $after: String) {
-            users(first: $first, after: $after) {
-                nodes {
-                    id
-                    name
-                    email
-                }
-                pageInfo {
-                    hasNextPage
-                    endCursor
+        "#,
+        filtered_var_name: "user",
+        filtered_nodes_path: &["data", "users", "nodes"],
+        paginated_query: r#"
+            query($first: Int, $after: String) {
+                users(first: $first, after: $after) {
+                    nodes { id name email }
+                    pageInfo { hasNextPage endCursor }
                 }
             }
-        }
-    "#;
+        "#,
+        paginated_nodes_path: &["data", "users", "nodes"],
+        paginated_page_info_path: &["data", "users", "pageInfo"],
+        not_found_msg: &format!("User not found: {}", user),
+    };
 
-    let pagination = PaginationOptions { all: true, page_size: Some(250), ..Default::default() };
-    let all_users = paginate_nodes(
-        client,
-        query_all,
-        serde_json::Map::new(),
-        &["data", "users", "nodes"],
-        &["data", "users", "pageInfo"],
-        &pagination,
-        250,
-    ).await?;
-
-    if !cache_opts.no_cache {
-        let cache = Cache::with_ttl(cache_opts.effective_ttl_seconds())?;
-        let _ = cache.set(CacheType::Users, json!(all_users));
-    }
-
-    if let Some(id) = find_user_id(&all_users, user) {
-        return Ok(id);
-    }
-
-    anyhow::bail!("User not found: {}", user)
+    resolve_id(client, user, cache_opts, &config, find_user_id).await
 }
 
 /// Resolve a label name to a UUID.
@@ -224,73 +205,31 @@ pub async fn resolve_label_id(client: &LinearClient, label: &str, cache_opts: &C
         return Ok(label.to_string());
     }
 
-    // Check cache first
-    if !cache_opts.no_cache {
-        let cache = Cache::new()?;
-        if let Some(cached) = cache.get(CacheType::Labels).and_then(|data| data.as_array().cloned()) {
-            if let Some(id) = find_label_id(&cached, label) {
-                return Ok(id);
-            }
-        }
-    }
-
-    // Try filtered query first (fast path)
-    let query = r#"
-        query($label: String!) {
-            issueLabels(first: 50, filter: { name: { eqIgnoreCase: $label } }) {
-                nodes {
-                    id
-                    name
+    let config = ResolverConfig {
+        cache_type: CacheType::Labels,
+        filtered_query: r#"
+            query($label: String!) {
+                issueLabels(first: 50, filter: { name: { eqIgnoreCase: $label } }) {
+                    nodes { id name }
                 }
             }
-        }
-    "#;
-
-    let result = client.query(query, Some(json!({ "label": label }))).await?;
-    let empty = vec![];
-    let labels = result["data"]["issueLabels"]["nodes"].as_array().unwrap_or(&empty);
-
-    if let Some(id) = find_label_id(labels, label) {
-        return Ok(id);
-    }
-
-    // Fallback: paginate through all labels (handles orgs with >500 labels)
-    let query_all = r#"
-        query($first: Int, $after: String) {
-            issueLabels(first: $first, after: $after) {
-                nodes {
-                    id
-                    name
-                }
-                pageInfo {
-                    hasNextPage
-                    endCursor
+        "#,
+        filtered_var_name: "label",
+        filtered_nodes_path: &["data", "issueLabels", "nodes"],
+        paginated_query: r#"
+            query($first: Int, $after: String) {
+                issueLabels(first: $first, after: $after) {
+                    nodes { id name }
+                    pageInfo { hasNextPage endCursor }
                 }
             }
-        }
-    "#;
+        "#,
+        paginated_nodes_path: &["data", "issueLabels", "nodes"],
+        paginated_page_info_path: &["data", "issueLabels", "pageInfo"],
+        not_found_msg: &format!("Label not found: {}", label),
+    };
 
-    let pagination = PaginationOptions { all: true, page_size: Some(250), ..Default::default() };
-    let all_labels = paginate_nodes(
-        client,
-        query_all,
-        serde_json::Map::new(),
-        &["data", "issueLabels", "nodes"],
-        &["data", "issueLabels", "pageInfo"],
-        &pagination,
-        250,
-    ).await?;
-
-    if !cache_opts.no_cache {
-        let cache = Cache::with_ttl(cache_opts.effective_ttl_seconds())?;
-        let _ = cache.set(CacheType::Labels, json!(all_labels));
-    }
-
-    if let Some(id) = find_label_id(&all_labels, label) {
-        return Ok(id);
-    }
-
-    anyhow::bail!("Label not found: {}", label)
+    resolve_id(client, label, cache_opts, &config, find_label_id).await
 }
 
 fn find_team_id(teams: &[Value], team: &str) -> Option<String> {
