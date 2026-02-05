@@ -149,10 +149,7 @@ async fn claim_issue(id: &str, output: &OutputOptions) -> Result<()> {
     "#;
 
     let result = client
-        .mutate(
-            mutation,
-            Some(json!({ "id": id, "assigneeId": my_id })),
-        )
+        .mutate(mutation, Some(json!({ "id": id, "assigneeId": my_id })))
         .await?;
 
     if output.is_json() {
@@ -179,10 +176,7 @@ async fn snooze_issue(id: &str, duration: &str, output: &OutputOptions) -> Resul
         "3d" => 3,
         "1w" => 7,
         "2w" => 14,
-        _ => duration
-            .trim_end_matches('d')
-            .parse::<i64>()
-            .unwrap_or(1),
+        _ => duration.trim_end_matches('d').parse::<i64>().unwrap_or(1),
     };
 
     let snooze_until = chrono::Utc::now() + chrono::Duration::days(days);

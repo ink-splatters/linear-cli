@@ -4,24 +4,24 @@ mod commands;
 mod config;
 mod dates;
 mod error;
+mod input;
+mod json_path;
 #[cfg(feature = "secure-storage")]
 mod keyring;
 mod output;
 mod pagination;
 mod priority;
-mod json_path;
-mod vcs;
 mod retry;
 mod text;
-mod input;
 mod types;
+mod vcs;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 use commands::{
-    auth, bulk, comments, cycles, doctor, documents, export, favorites, git, history,
-    initiatives, interactive, issues, labels, metrics, notifications, projects, relations, roadmaps, search,
+    auth, bulk, comments, cycles, doctor, documents, export, favorites, git, history, initiatives,
+    interactive, issues, labels, metrics, notifications, projects, relations, roadmaps, search,
     statuses, sync, teams, templates, time, triage, uploads, users, watch,
 };
 use error::CliError;
@@ -901,7 +901,11 @@ async fn run_command(
 }
 
 /// Handle the context command - detect current Linear issue from git branch
-async fn handle_context(output: &OutputOptions, agent_opts: AgentOptions, retry: u32) -> Result<()> {
+async fn handle_context(
+    output: &OutputOptions,
+    agent_opts: AgentOptions,
+    retry: u32,
+) -> Result<()> {
     // Get current git branch
     let branch_output = std::process::Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -990,7 +994,3 @@ async fn handle_context(output: &OutputOptions, agent_opts: AgentOptions, retry:
 
     Ok(())
 }
-
-
-
-

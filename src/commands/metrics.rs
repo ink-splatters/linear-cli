@@ -87,11 +87,7 @@ async fn cycle_metrics(id: &str, _team: Option<String>, output: &OutputOptions) 
             })
             .unwrap_or(0);
         let total_points: f64 = issues
-            .map(|a| {
-                a.iter()
-                    .filter_map(|i| i["estimate"].as_f64())
-                    .sum()
-            })
+            .map(|a| a.iter().filter_map(|i| i["estimate"].as_f64()).sum())
             .unwrap_or(0.0);
         let completed_points: f64 = issues
             .map(|a| {
@@ -275,14 +271,20 @@ async fn velocity_metrics(team: &str, cycles: usize, output: &OutputOptions) -> 
             })
             .collect();
 
-        let avg: f64 = velocity.iter().filter_map(|v| v["velocity"].as_f64()).sum::<f64>()
+        let avg: f64 = velocity
+            .iter()
+            .filter_map(|v| v["velocity"].as_f64())
+            .sum::<f64>()
             / velocity.len().max(1) as f64;
 
-        print_json(&json!({
-            "team": team_data["name"],
-            "cycles": velocity,
-            "average_velocity": avg.round(),
-        }), output)?;
+        print_json(
+            &json!({
+                "team": team_data["name"],
+                "cycles": velocity,
+                "average_velocity": avg.round(),
+            }),
+            output,
+        )?;
     } else {
         println!("Team: {}", team_data["name"].as_str().unwrap_or(team));
         println!("\nVelocity by Cycle:");

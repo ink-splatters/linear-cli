@@ -45,11 +45,14 @@ pub async fn watch_issue(id: &str, interval_secs: u64, output: &OutputOptions) -
             if iteration > 0 {
                 // Not the first iteration, so this is a change
                 if output.is_json() {
-                    print_json(&json!({
-                        "event": "updated",
-                        "issue": issue,
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                    }), output)?;
+                    print_json(
+                        &json!({
+                            "event": "updated",
+                            "issue": issue,
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                        }),
+                        output,
+                    )?;
                 } else {
                     println!(
                         "[{}] {} updated - Status: {}, Assignee: {}",
@@ -60,11 +63,14 @@ pub async fn watch_issue(id: &str, interval_secs: u64, output: &OutputOptions) -
                     );
                 }
             } else if output.is_json() {
-                print_json(&json!({
-                    "event": "initial",
-                    "issue": issue,
-                    "timestamp": chrono::Utc::now().to_rfc3339(),
-                }), output)?;
+                print_json(
+                    &json!({
+                        "event": "initial",
+                        "issue": issue,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    }),
+                    output,
+                )?;
             } else {
                 println!(
                     "Initial state: {} - {}",
@@ -85,4 +91,3 @@ pub async fn watch_issue(id: &str, interval_secs: u64, output: &OutputOptions) -
         sleep(Duration::from_secs(interval_secs)).await;
     }
 }
-

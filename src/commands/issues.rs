@@ -11,8 +11,8 @@ use crate::input::read_ids_from_stdin;
 use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
 use crate::pagination::{paginate_nodes, stream_nodes};
 use crate::priority::priority_to_string;
-use crate::vcs::{generate_branch_name, run_git_command};
 use crate::text::truncate;
+use crate::vcs::{generate_branch_name, run_git_command};
 use crate::AgentOptions;
 
 use super::templates;
@@ -368,7 +368,6 @@ pub async fn handle(
         IssueCommands::Stop { id, unassign } => stop_issue(&id, unassign, agent_opts).await,
     }
 }
-
 
 #[allow(clippy::too_many_arguments)]
 async fn list_issues(
@@ -1109,7 +1108,6 @@ async fn delete_issue(id: &str, force: bool, agent_opts: AgentOptions) -> Result
 fn branch_exists(branch: &str) -> bool {
     run_git_command(&["rev-parse", "--verify", branch]).is_ok()
 }
-
 
 async fn start_issue(
     id: &str,

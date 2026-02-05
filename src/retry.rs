@@ -1,6 +1,6 @@
-use std::time::Duration;
 use crate::error::CliError;
 use rand::Rng;
+use std::time::Duration;
 use tokio::time::sleep;
 
 /// Retry configuration for API calls
@@ -63,10 +63,7 @@ impl RetryConfig {
 }
 
 /// Execute a function with retry logic
-pub async fn with_retry<F, Fut, T, E>(
-    config: &RetryConfig,
-    mut f: F,
-) -> Result<T, E>
+pub async fn with_retry<F, Fut, T, E>(config: &RetryConfig, mut f: F) -> Result<T, E>
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<T, E>>,
@@ -104,7 +101,6 @@ pub trait IsRetryable {
     fn is_retryable(&self) -> bool;
     fn retry_after(&self) -> Option<u64>;
 }
-
 
 impl IsRetryable for CliError {
     fn is_retryable(&self) -> bool {
@@ -240,4 +236,3 @@ mod tests {
         assert_eq!(err_no_retry.retry_after(), None);
     }
 }
-

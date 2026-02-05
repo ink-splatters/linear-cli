@@ -12,8 +12,8 @@ const SERVICE_NAME: &str = "linear-cli";
 /// Get an API key from the keyring for a profile.
 /// Returns Ok(None) if no key is stored, Ok(Some(key)) if found.
 pub fn get_key(profile: &str) -> Result<Option<String>> {
-    let entry = keyring::Entry::new(SERVICE_NAME, profile)
-        .context("Failed to create keyring entry")?;
+    let entry =
+        keyring::Entry::new(SERVICE_NAME, profile).context("Failed to create keyring entry")?;
 
     match entry.get_password() {
         Ok(password) => Ok(Some(password)),
@@ -23,7 +23,10 @@ pub fn get_key(profile: &str) -> Result<Option<String>> {
             Ok(None)
         }
         Err(e) => {
-            eprintln!("Warning: Keyring error ({}), falling back to config file", e);
+            eprintln!(
+                "Warning: Keyring error ({}), falling back to config file",
+                e
+            );
             Ok(None)
         }
     }
@@ -31,8 +34,8 @@ pub fn get_key(profile: &str) -> Result<Option<String>> {
 
 /// Store an API key in the keyring for a profile.
 pub fn set_key(profile: &str, api_key: &str) -> Result<()> {
-    let entry = keyring::Entry::new(SERVICE_NAME, profile)
-        .context("Failed to create keyring entry")?;
+    let entry =
+        keyring::Entry::new(SERVICE_NAME, profile).context("Failed to create keyring entry")?;
 
     entry
         .set_password(api_key)
@@ -44,8 +47,8 @@ pub fn set_key(profile: &str, api_key: &str) -> Result<()> {
 /// Delete an API key from the keyring for a profile.
 /// Returns Ok(()) even if no key was stored.
 pub fn delete_key(profile: &str) -> Result<()> {
-    let entry = keyring::Entry::new(SERVICE_NAME, profile)
-        .context("Failed to create keyring entry")?;
+    let entry =
+        keyring::Entry::new(SERVICE_NAME, profile).context("Failed to create keyring entry")?;
 
     match entry.delete_credential() {
         Ok(()) => Ok(()),

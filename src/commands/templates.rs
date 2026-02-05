@@ -123,7 +123,6 @@ pub async fn handle(cmd: TemplateCommands, output: &OutputOptions) -> Result<()>
     }
 }
 
-
 fn list_templates(output: &OutputOptions) -> Result<()> {
     let store = load_templates()?;
 

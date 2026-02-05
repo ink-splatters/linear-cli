@@ -445,7 +445,6 @@ fn select_fields(value: &Value, fields: &[String]) -> Value {
     }
 }
 
-
 fn set_path(out: &mut Map<String, Value>, parts: &[&str], value: Value) {
     if parts.is_empty() {
         return;
@@ -502,10 +501,8 @@ mod tests {
 
     #[test]
     fn test_parse_filter_multiple() {
-        let filters = parse_filters(&[
-            "status=Done".to_string(),
-            "priority!=1".to_string(),
-        ]).unwrap();
+        let filters =
+            parse_filters(&["status=Done".to_string(), "priority!=1".to_string()]).unwrap();
         assert_eq!(filters.len(), 2);
     }
 
@@ -558,4 +555,3 @@ mod tests {
         assert_eq!(values[2]["priority"], 3);
     }
 }
-

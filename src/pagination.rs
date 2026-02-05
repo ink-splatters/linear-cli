@@ -28,7 +28,6 @@ impl PaginationOptions {
     }
 }
 
-
 pub async fn paginate_nodes(
     client: &LinearClient,
     query: &str,

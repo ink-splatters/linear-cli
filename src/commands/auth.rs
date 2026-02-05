@@ -47,7 +47,11 @@ pub enum AuthCommands {
 
 pub async fn handle(cmd: AuthCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
-        AuthCommands::Login { key, validate, secure } => login(key, validate, secure, output).await,
+        AuthCommands::Login {
+            key,
+            validate,
+            secure,
+        } => login(key, validate, secure, output).await,
         AuthCommands::Logout { force } => logout(force, output).await,
         AuthCommands::Status { validate } => status(validate, output).await,
         #[cfg(feature = "secure-storage")]
@@ -55,7 +59,12 @@ pub async fn handle(cmd: AuthCommands, output: &OutputOptions) -> Result<()> {
     }
 }
 
-async fn login(key: Option<String>, validate: bool, secure: bool, output: &OutputOptions) -> Result<()> {
+async fn login(
+    key: Option<String>,
+    validate: bool,
+    secure: bool,
+    output: &OutputOptions,
+) -> Result<()> {
     let key = match key {
         Some(key) => key,
         None => Password::new().with_prompt("Linear API key").interact()?,
@@ -217,10 +226,16 @@ async fn status(validate: bool, output: &OutputOptions) -> Result<()> {
         return Ok(());
     }
 
-    println!("Profile: {}", profile.clone().unwrap_or_else(|| "none".to_string()));
+    println!(
+        "Profile: {}",
+        profile.clone().unwrap_or_else(|| "none".to_string())
+    );
     println!("Config file: {}", if configured { "yes" } else { "no" });
     println!("Keyring: {}", if keyring_configured { "yes" } else { "no" });
-    println!("Keyring available: {}", if keyring_available { "yes" } else { "no" });
+    println!(
+        "Keyring available: {}",
+        if keyring_available { "yes" } else { "no" }
+    );
     println!(
         "Env API key override: {}",
         if env_key.is_some() { "yes" } else { "no" }
@@ -262,14 +277,19 @@ fn resolve_profile_for_write() -> Result<String> {
 #[cfg(feature = "secure-storage")]
 async fn migrate(keep_config: bool, force: bool, output: &OutputOptions) -> Result<()> {
     if !crate::keyring::is_available() {
-        anyhow::bail!("Keyring is not available on this system. Check that a secret service is running.");
+        anyhow::bail!(
+            "Keyring is not available on this system. Check that a secret service is running."
+        );
     }
 
     let config_data = config::load_config()?;
 
     if config_data.workspaces.is_empty() {
         if output.is_json() || output.has_template() {
-            print_json(&json!({ "migrated": 0, "message": "No workspaces to migrate" }), output)?;
+            print_json(
+                &json!({ "migrated": 0, "message": "No workspaces to migrate" }),
+                output,
+            )?;
             return Ok(());
         }
         println!("No workspaces to migrate.");
@@ -279,7 +299,10 @@ async fn migrate(keep_config: bool, force: bool, output: &OutputOptions) -> Resu
     let workspace_names: Vec<_> = config_data.workspaces.keys().cloned().collect();
 
     if !force {
-        println!("This will migrate {} workspace(s) to the keyring:", workspace_names.len());
+        println!(
+            "This will migrate {} workspace(s) to the keyring:",
+            workspace_names.len()
+        );
         for name in &workspace_names {
             println!("  - {}", name);
         }

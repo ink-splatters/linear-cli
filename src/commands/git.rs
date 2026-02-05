@@ -7,8 +7,8 @@ use std::process::Command;
 
 use crate::api::LinearClient;
 use crate::display_options;
-use crate::vcs::{generate_branch_name, run_git_command};
 use crate::text::truncate;
+use crate::vcs::{generate_branch_name, run_git_command};
 
 /// Version control system type
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -197,7 +197,6 @@ async fn get_issue_info(issue_id: &str) -> Result<(String, String, String, Strin
     Ok((identifier, title, branch_name, url))
 }
 
-
 /// Extract Linear issue ID from commit message
 fn extract_linear_issue(message: &str) -> Option<String> {
     // Try Linear-Issue: trailer first
@@ -225,7 +224,6 @@ fn extract_linear_issue(message: &str) -> Option<String> {
 
     None
 }
-
 
 fn run_jj_command(args: &[&str]) -> Result<String> {
     let output = Command::new("jj").args(args).output()?;

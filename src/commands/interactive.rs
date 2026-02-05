@@ -327,7 +327,6 @@ async fn list_issues_interactive(client: &LinearClient, team: &Team) -> Result<(
     Ok(())
 }
 
-
 async fn view_issue_interactive(client: &LinearClient) -> Result<()> {
     println!("\n{}", "View Issue".cyan().bold());
 

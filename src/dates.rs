@@ -129,8 +129,7 @@ fn add_months(from: NaiveDate, months: i32) -> NaiveDate {
     let new_year = (total_months - 1) / 12;
     let new_month = ((total_months - 1) % 12 + 1) as u32;
 
-    NaiveDate::from_ymd_opt(new_year, new_month, from.day().min(28))
-        .unwrap_or(from)
+    NaiveDate::from_ymd_opt(new_year, new_month, from.day().min(28)).unwrap_or(from)
 }
 
 #[cfg(test)]

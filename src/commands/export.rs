@@ -54,9 +54,12 @@ pub async fn handle(cmd: ExportCommands, _output: &OutputOptions) -> Result<()> 
             limit,
             all,
         } => export_csv(team, file, include_completed, limit, all).await,
-        ExportCommands::Markdown { team, file, limit, all } => {
-            export_markdown(team, file, limit, all).await
-        }
+        ExportCommands::Markdown {
+            team,
+            file,
+            limit,
+            all,
+        } => export_markdown(team, file, limit, all).await,
     }
 }
 
@@ -274,7 +277,11 @@ async fn export_markdown(
     };
 
     writeln!(output, "# Issues Export\n")?;
-    writeln!(output, "Generated: {}\n", chrono::Utc::now().format("%Y-%m-%d %H:%M UTC"))?;
+    writeln!(
+        output,
+        "Generated: {}\n",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M UTC")
+    )?;
 
     // Group by status
     let mut by_status: std::collections::HashMap<String, Vec<&serde_json::Value>> =

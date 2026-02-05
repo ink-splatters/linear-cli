@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use reqwest::{Client, StatusCode};
 use reqwest::header::HeaderMap;
+use reqwest::{Client, StatusCode};
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -40,7 +40,10 @@ where
     // Check cache first
     if !cache_opts.no_cache {
         let cache = Cache::new()?;
-        if let Some(cached) = cache.get(config.cache_type).and_then(|data| data.as_array().cloned()) {
+        if let Some(cached) = cache
+            .get(config.cache_type)
+            .and_then(|data| data.as_array().cloned())
+        {
             if let Some(id) = finder(&cached, input) {
                 return Ok(id);
             }
@@ -48,7 +51,12 @@ where
     }
 
     // Try filtered query first (fast path)
-    let result = client.query(config.filtered_query, Some(json!({ config.filtered_var_name: input }))).await?;
+    let result = client
+        .query(
+            config.filtered_query,
+            Some(json!({ config.filtered_var_name: input })),
+        )
+        .await?;
     let empty = vec![];
     let nodes = get_nested_array(&result, config.filtered_nodes_path).unwrap_or(&empty);
 
@@ -57,7 +65,11 @@ where
     }
 
     // Fallback: paginate through all items
-    let pagination = PaginationOptions { all: true, page_size: Some(250), ..Default::default() };
+    let pagination = PaginationOptions {
+        all: true,
+        page_size: Some(250),
+        ..Default::default()
+    };
     let all_items = paginate_nodes(
         client,
         config.paginated_query,
@@ -66,7 +78,8 @@ where
         config.paginated_page_info_path,
         &pagination,
         250,
-    ).await?;
+    )
+    .await?;
 
     if !cache_opts.no_cache {
         let cache = Cache::with_ttl(cache_opts.effective_ttl_seconds())?;
@@ -124,7 +137,11 @@ fn http_error(status: StatusCode, headers: &HeaderMap, context: &str) -> CliErro
 
 /// Resolves a team key (like "SCW") or name to a team UUID.
 /// If the input is already a UUID (36 characters with dashes), returns it as-is.
-pub async fn resolve_team_id(client: &LinearClient, team: &str, cache_opts: &CacheOptions) -> Result<String> {
+pub async fn resolve_team_id(
+    client: &LinearClient,
+    team: &str,
+    cache_opts: &CacheOptions,
+) -> Result<String> {
     if is_uuid(team) {
         return Ok(team.to_string());
     }
@@ -150,7 +167,10 @@ pub async fn resolve_team_id(client: &LinearClient, team: &str, cache_opts: &Cac
         "#,
         paginated_nodes_path: &["data", "teams", "nodes"],
         paginated_page_info_path: &["data", "teams", "pageInfo"],
-        not_found_msg: &format!("Team not found: {}. Use linear-cli t list to see available teams.", team),
+        not_found_msg: &format!(
+            "Team not found: {}. Use linear-cli t list to see available teams.",
+            team
+        ),
     };
 
     resolve_id(client, team, cache_opts, &config, find_team_id).await
@@ -158,7 +178,11 @@ pub async fn resolve_team_id(client: &LinearClient, team: &str, cache_opts: &Cac
 
 /// Resolve a user identifier to a UUID.
 /// Handles "me", UUIDs, names, and emails.
-pub async fn resolve_user_id(client: &LinearClient, user: &str, cache_opts: &CacheOptions) -> Result<String> {
+pub async fn resolve_user_id(
+    client: &LinearClient,
+    user: &str,
+    cache_opts: &CacheOptions,
+) -> Result<String> {
     if user.eq_ignore_ascii_case("me") {
         let query = r#"query { viewer { id } }"#;
         let result = client.query(query, None).await?;
@@ -200,7 +224,11 @@ pub async fn resolve_user_id(client: &LinearClient, user: &str, cache_opts: &Cac
 }
 
 /// Resolve a label name to a UUID.
-pub async fn resolve_label_id(client: &LinearClient, label: &str, cache_opts: &CacheOptions) -> Result<String> {
+pub async fn resolve_label_id(
+    client: &LinearClient,
+    label: &str,
+    cache_opts: &CacheOptions,
+) -> Result<String> {
     if is_uuid(label) {
         return Ok(label.to_string());
     }
@@ -233,13 +261,19 @@ pub async fn resolve_label_id(client: &LinearClient, label: &str, cache_opts: &C
 }
 
 fn find_team_id(teams: &[Value], team: &str) -> Option<String> {
-    if let Some(team_data) = teams.iter().find(|t| t["key"].as_str().map(|k| k.eq_ignore_ascii_case(team)) == Some(true)) {
+    if let Some(team_data) = teams
+        .iter()
+        .find(|t| t["key"].as_str().map(|k| k.eq_ignore_ascii_case(team)) == Some(true))
+    {
         if let Some(id) = team_data["id"].as_str() {
             return Some(id.to_string());
         }
     }
 
-    if let Some(team_data) = teams.iter().find(|t| t["name"].as_str().map(|n| n.eq_ignore_ascii_case(team)) == Some(true)) {
+    if let Some(team_data) = teams
+        .iter()
+        .find(|t| t["name"].as_str().map(|n| n.eq_ignore_ascii_case(team)) == Some(true))
+    {
         if let Some(id) = team_data["id"].as_str() {
             return Some(id.to_string());
         }
@@ -288,7 +322,11 @@ impl LinearClient {
             .connect_timeout(Duration::from_secs(10))
             .user_agent(format!("linear-cli/{}", env!("CARGO_PKG_VERSION")))
             .build()?;
-        Ok(Self { client, api_key, retry })
+        Ok(Self {
+            client,
+            api_key,
+            retry,
+        })
     }
 
     pub fn new_with_retry(retry_count: u32) -> Result<Self> {
@@ -401,7 +439,6 @@ impl LinearClient {
         Ok(bytes)
     }
 }
-
 
 static DEFAULT_RETRY: OnceLock<RetryConfig> = OnceLock::new();
 

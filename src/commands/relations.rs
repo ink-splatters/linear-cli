@@ -251,7 +251,12 @@ async fn list_relations(id: &str, output: &OutputOptions) -> Result<()> {
     Ok(())
 }
 
-async fn add_relation(from: &str, relation: RelationType, to: &str, output: &OutputOptions) -> Result<()> {
+async fn add_relation(
+    from: &str,
+    relation: RelationType,
+    to: &str,
+    output: &OutputOptions,
+) -> Result<()> {
     let client = LinearClient::new()?;
 
     let mutation = r#"
@@ -309,9 +314,7 @@ async fn remove_relation(id: &str, output: &OutputOptions) -> Result<()> {
         }
     "#;
 
-    let result = client
-        .mutate(mutation, Some(json!({ "id": id })))
-        .await?;
+    let result = client.mutate(mutation, Some(json!({ "id": id }))).await?;
 
     if output.is_json() {
         print_json(&result["data"]["issueRelationDelete"], output)?;
@@ -339,10 +342,7 @@ async fn set_parent(child: &str, parent: &str, output: &OutputOptions) -> Result
     "#;
 
     let result = client
-        .mutate(
-            mutation,
-            Some(json!({ "id": child, "parentId": parent })),
-        )
+        .mutate(mutation, Some(json!({ "id": child, "parentId": parent })))
         .await?;
 
     if output.is_json() {
@@ -375,9 +375,7 @@ async fn remove_parent(id: &str, output: &OutputOptions) -> Result<()> {
         }
     "#;
 
-    let result = client
-        .mutate(mutation, Some(json!({ "id": id })))
-        .await?;
+    let result = client.mutate(mutation, Some(json!({ "id": id }))).await?;
 
     if output.is_json() {
         print_json(&result["data"]["issueUpdate"], output)?;

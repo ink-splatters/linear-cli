@@ -80,17 +80,23 @@ async fn issue_history(id: &str, limit: usize, output: &OutputOptions) -> Result
         anyhow::bail!("Issue not found: {}", id);
     }
 
-    let history = issue["history"]["nodes"].as_array().cloned().unwrap_or_default();
+    let history = issue["history"]["nodes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
 
     if output.is_json() {
-        print_json(&json!({
-            "issue": {
-                "id": issue["id"],
-                "identifier": issue["identifier"],
-                "title": issue["title"],
-            },
-            "history": history.iter().take(limit).collect::<Vec<_>>()
-        }), output)?;
+        print_json(
+            &json!({
+                "issue": {
+                    "id": issue["id"],
+                    "identifier": issue["identifier"],
+                    "title": issue["title"],
+                },
+                "history": history.iter().take(limit).collect::<Vec<_>>()
+            }),
+            output,
+        )?;
     } else {
         let display = DISPLAY_OPTIONS.get().cloned().unwrap_or_default();
         let max_width = display.max_width(30);
@@ -179,10 +185,7 @@ async fn issue_history(id: &str, limit: usize, output: &OutputOptions) -> Result
                         .take(16)
                         .collect::<String>()
                         .replace('T', " "),
-                    actor: truncate(
-                        h["actor"]["name"].as_str().unwrap_or("System"),
-                        max_width,
-                    ),
+                    actor: truncate(h["actor"]["name"].as_str().unwrap_or("System"), max_width),
                     action,
                     details: truncate(&details, max_width),
                 }
