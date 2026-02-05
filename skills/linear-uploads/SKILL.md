@@ -1,7 +1,7 @@
 ---
 name: linear-uploads
 description: Download attachments and images from Linear issues. Use when fetching screenshots, images, or file attachments from Linear comments or descriptions.
-allowed-tools: Bash
+allowed-tools: Bash Read
 ---
 
 # Linear Uploads
@@ -14,8 +14,8 @@ Download attachments and images from Linear issues using `linear-cli`.
 # Download image/attachment to file
 linear-cli up fetch "https://uploads.linear.app/..." -f image.png
 
-# Download screenshot
-linear-cli up fetch "https://uploads.linear.app/abc/def/screenshot.png" -f /tmp/screenshot.png
+# Download to temp directory
+linear-cli up fetch "https://uploads.linear.app/..." -f /tmp/screenshot.png
 ```
 
 ## Output to Stdout
@@ -24,35 +24,33 @@ linear-cli up fetch "https://uploads.linear.app/abc/def/screenshot.png" -f /tmp/
 # Pipe to other tools
 linear-cli up fetch "https://uploads.linear.app/..." | base64
 
-# Pipe to file
+# Redirect to file
 linear-cli up fetch "https://uploads.linear.app/..." > file.png
 ```
 
 ## Finding Upload URLs
 
 Upload URLs are found in:
-- Issue descriptions
-- Comments (use `linear-cli cm list ISSUE_ID --output json`)
+- Issue descriptions (`linear-cli i get LIN-123 --output json`)
+- Comments (`linear-cli cm list LIN-123 --output json`)
 
-URLs follow pattern: `https://uploads.linear.app/{org}/{upload}/{filename}`
+URL pattern: `https://uploads.linear.app/{org}/{upload}/{filename}`
+
+## View Images (AI Agents)
+
+Since Claude is multimodal, download then read:
+
+```bash
+# 1. Download to temp file
+linear-cli up fetch "https://uploads.linear.app/..." -f /tmp/screenshot.png
+
+# 2. Use Read tool on the file
+# Claude can view images directly
+```
 
 ## Tips
 
-- Requires valid Linear API key
+- Requires valid LINEAR_API_KEY
 - Use `-f` / `--file` to specify output filename
-- Without `-f`, outputs raw bytes to stdout (for piping)
-
-## When to Use Each Mode
-
-**Use `-f` (file) when you need to view the image:**
-```bash
-# Download to /tmp, then use Read tool to view
-linear-cli up fetch "https://uploads.linear.app/..." -f /tmp/screenshot.png
-# Then: Read tool on /tmp/screenshot.png (Claude is multimodal)
-```
-
-**Use stdout when piping to other CLI tools:**
-```bash
-# Pipe to base64, imagemagick, etc.
-linear-cli up fetch "https://uploads.linear.app/..." | base64
-```
+- Without `-f`, outputs raw bytes to stdout
+- URLs must be from `uploads.linear.app`

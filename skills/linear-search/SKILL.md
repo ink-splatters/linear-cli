@@ -11,14 +11,17 @@ Search Linear.app issues and projects using `linear-cli`.
 ## Search Issues
 
 ```bash
-# Search issues by text
+# Search by text
 linear-cli s issues "authentication bug"
 
 # Limit results
 linear-cli s issues "login" --limit 5
 
-# Get JSON output
+# JSON output for parsing
 linear-cli s issues "error" --output json
+
+# With specific fields
+linear-cli s issues "crash" --output json --fields identifier,title,state.name
 ```
 
 ## Search Projects
@@ -29,21 +32,27 @@ linear-cli s projects "backend"
 
 # Limit results
 linear-cli s projects "api" --limit 10
+
+# JSON output
+linear-cli s projects "mobile" --output json
 ```
 
-## Combine with Filters
+## Filter Results
 
-After searching, you can get details on specific issues:
+After searching, get details on specific issues:
 
 ```bash
 # Get issue details
-linear-cli i get LIN-123
-
-# Get as JSON for parsing
 linear-cli i get LIN-123 --output json
 
-# List comments on issue
+# Get comments
 linear-cli cm list LIN-123 --output json
+
+# List issues by team
+linear-cli i list -t ENG --output json
+
+# List issues by status
+linear-cli i list -s "In Progress" --output json
 ```
 
 ## Tips
@@ -51,3 +60,5 @@ linear-cli cm list LIN-123 --output json
 - Search is case-insensitive
 - Searches issue titles and descriptions
 - Use `--output json` for programmatic access
+- Use `--limit` to control result count
+- Combine with `i get` for full details

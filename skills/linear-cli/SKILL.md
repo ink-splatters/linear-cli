@@ -1,192 +1,214 @@
 ---
 name: linear-cli
-description: Manage Linear.app issues, projects, and teams from the command line. Use this skill when working with Linear issues, creating tasks, updating status, or integrating Linear into development workflows. 10-50x more token-efficient than Linear MCP tools.
+description: Manage Linear.app issues, projects, and teams from the command line. Use this skill when working with Linear issues, creating tasks, updating status, searching, creating PRs, or downloading attachments. 10-50x more token-efficient than Linear MCP tools.
 license: MIT
 metadata:
   author: Finesssee
   version: "0.2.9"
   repository: https://github.com/Finesssee/linear-cli
+allowed-tools: Bash
 ---
 
 # Linear CLI
 
-A powerful CLI for Linear.app that is optimized for AI agent usage. Use `linear-cli` for all Linear operations instead of MCP tools - it's 10-50x more token-efficient.
+A powerful CLI for Linear.app optimized for AI agents. **Always use this instead of Linear MCP tools** - it's 10-50x more token-efficient.
 
 ## Installation
 
 ```bash
-# From crates.io
 cargo install linear-cli
-
-# With secure API key storage (OS keyring)
-cargo install linear-cli --features secure-storage
 ```
 
 ## Authentication
 
 ```bash
-# Set API key via environment variable (recommended for CI/agents)
+# Environment variable (recommended for agents)
 export LINEAR_API_KEY="lin_api_xxxxx"
 
-# Or authenticate interactively
+# Or interactive login
 linear-cli auth login
-
-# With secure storage (stores in OS keyring)
-linear-cli auth login --secure
 ```
 
-Get your API key from: https://linear.app/settings/api
+Get API key: https://linear.app/settings/api
+
+---
 
 ## Quick Reference
 
 ### Issues
 
-| Task | Command |
-|------|---------|
-| List issues | `linear-cli i list` |
-| List my issues | `linear-cli i list --assignee me` |
-| Filter by team | `linear-cli i list -t ENG` |
-| Filter by status | `linear-cli i list -s "In Progress"` |
-| Get issue | `linear-cli i get LIN-123` |
-| Get multiple | `linear-cli i get LIN-1 LIN-2 LIN-3` |
-| Create issue | `linear-cli i create "Title" -t TEAM` |
-| Create with priority | `linear-cli i create "Bug" -t ENG -p 1` |
-| Update status | `linear-cli i update LIN-123 -s Done` |
-| Start work | `linear-cli i start LIN-123` |
-| Start + checkout branch | `linear-cli i start LIN-123 --checkout` |
-| Stop work | `linear-cli i stop LIN-123` |
+```bash
+# List issues
+linear-cli i list                          # All issues
+linear-cli i list -t ENG                   # Filter by team
+linear-cli i list -s "In Progress"         # Filter by status
+linear-cli i list --assignee me            # My issues
 
-### Projects & Teams
+# Get issue(s)
+linear-cli i get LIN-123                   # Single issue
+linear-cli i get LIN-1 LIN-2 LIN-3         # Multiple issues
 
-| Task | Command |
-|------|---------|
-| List projects | `linear-cli p list` |
-| List teams | `linear-cli t list` |
-| Get project | `linear-cli p get PROJECT-ID` |
+# Create issue
+linear-cli i create "Title" -t TEAM        # Basic
+linear-cli i create "Bug" -t ENG -p 1      # With priority (1=urgent)
+linear-cli i create "Task" -t ENG -a me    # Assign to self
+linear-cli i create "Fix" -t ENG -l bug    # With label
+linear-cli i create "Due" -t ENG --due +3d # Due in 3 days
 
-### Search & Context
+# Update issue
+linear-cli i update LIN-123 -s Done        # Change status
+linear-cli i update LIN-123 -p 2           # Change priority
+linear-cli i update LIN-123 -a "John"      # Assign to user
 
-| Task | Command |
-|------|---------|
-| Search issues | `linear-cli s issues "query"` |
-| Get current context | `linear-cli context` |
-| Get comments | `linear-cli cm list ISSUE-ID` |
+# Start/stop work
+linear-cli i start LIN-123 --checkout      # Assign + In Progress + git branch
+linear-cli i stop LIN-123                  # Unassign + reset status
+```
+
+### Search
+
+```bash
+linear-cli s issues "auth bug"             # Search issues
+linear-cli s projects "backend"            # Search projects
+```
 
 ### Git Integration
 
-| Task | Command |
-|------|---------|
-| Create PR for issue | `linear-cli g pr LIN-123` |
-| Link branch to issue | `linear-cli g link LIN-123` |
+```bash
+linear-cli g pr LIN-123                    # Create PR for issue
+linear-cli g pr LIN-123 --draft            # Draft PR
+linear-cli g checkout LIN-123              # Create/checkout branch
+linear-cli context                         # Get issue from current branch
+```
+
+### Comments
+
+```bash
+linear-cli cm list LIN-123                 # List comments
+linear-cli cm create LIN-123 -b "Done"     # Add comment
+```
+
+### Attachments
+
+```bash
+linear-cli up fetch "URL" -f image.png     # Download to file
+```
+
+### Teams & Projects
+
+```bash
+linear-cli t list                          # List teams
+linear-cli p list                          # List projects
+```
+
+---
 
 ## Agent-Optimized Flags
 
-These flags make output suitable for programmatic consumption:
+**ALWAYS use these for programmatic access:**
 
-| Flag | Purpose |
-|------|---------|
-| `--output json` | JSON output (machine-readable) |
-| `--output ndjson` | Newline-delimited JSON (streaming) |
-| `--compact` | No pretty-printing (saves tokens) |
-| `--fields a,b,c` | Select specific fields only |
-| `--sort field` | Sort by field (supports nested: `state.name`) |
-| `--order asc\|desc` | Sort direction |
-| `--quiet` | Suppress decorative output |
-| `--id-only` | Only output the ID (for chaining) |
-| `--dry-run` | Preview without executing |
-| `-` (stdin) | Read input from pipe |
+| Flag | Purpose | Example |
+|------|---------|---------|
+| `--output json` | JSON output | `linear-cli i list --output json` |
+| `--compact` | No formatting (saves tokens) | `--output json --compact` |
+| `--fields a,b` | Select fields only | `--fields identifier,title,state.name` |
+| `--sort field` | Sort results | `--sort priority` or `--sort state.name` |
+| `--quiet` | No decorative output | `-q` |
+| `--id-only` | Return only ID | For chaining commands |
+| `--dry-run` | Preview only | Test before creating |
 
-### Examples
+### Recommended Pattern
 
 ```bash
-# Get issue as compact JSON
-linear-cli i get LIN-123 --output json --compact
+# Token-efficient issue listing
+linear-cli i list -t ENG --output json --compact --fields identifier,title,state.name
 
-# List issues with specific fields only
-linear-cli i list -t ENG --output json --fields identifier,title,state.name
+# Create and capture ID
+ID=$(linear-cli i create "Bug" -t ENG --id-only)
 
-# Create issue and capture ID for chaining
-ID=$(linear-cli i create "Task" -t ENG --id-only)
-
-# Preview without creating
-linear-cli i create "Test" -t ENG --dry-run
-
-# Pipe description from file
-cat description.md | linear-cli i create "Title" -t ENG -d -
-
-# Set default JSON output for session
+# Set JSON as default for session
 export LINEAR_CLI_OUTPUT=json
 ```
 
+---
+
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Not found |
-| 3 | Authentication error |
-| 4 | Rate limited |
+| Code | Meaning | Action |
+|------|---------|--------|
+| 0 | Success | Continue |
+| 1 | General error | Check stderr |
+| 2 | Not found | Verify ID exists |
+| 3 | Auth error | Check LINEAR_API_KEY |
+| 4 | Rate limited | Wait and retry |
+
+---
 
 ## Priority Values
 
-| Value | Meaning |
-|-------|---------|
+| Value | Level |
+|-------|-------|
 | 0 | No priority |
 | 1 | Urgent |
 | 2 | High |
 | 3 | Normal |
 | 4 | Low |
 
+---
+
 ## Due Date Shortcuts
 
-The `--due` flag accepts:
-- `today`, `tomorrow`, `yesterday`
-- `+3d` (3 days from now)
-- `+2w` (2 weeks from now)
-- `monday`, `tue`, `friday` (next occurrence)
-- `eow` (end of week)
-- `eom` (end of month)
-- `2024-03-15` (ISO date)
+| Input | Meaning |
+|-------|---------|
+| `today` | Today |
+| `tomorrow`, `tom` | Tomorrow |
+| `+3d` | 3 days from now |
+| `+2w` | 2 weeks from now |
+| `monday`, `tue` | Next occurrence |
+| `eow` | End of week |
+| `eom` | End of month |
+| `2024-03-15` | Specific date |
 
-## Best Practices for Agents
-
-1. **Always use `--output json`** for parsing responses
-2. **Use `--compact`** to reduce token usage
-3. **Use `--fields`** to fetch only needed data
-4. **Use `--id-only`** when chaining commands
-5. **Use `--quiet`** to suppress decorative output
-6. **Check exit codes** for error handling
-7. **Use short aliases**: `i` (issues), `p` (projects), `t` (teams), `s` (search), `cm` (comments)
+---
 
 ## Common Workflows
 
-### Start working on an issue
+### Start Working on Issue
 ```bash
 linear-cli i start LIN-123 --checkout
-# Creates/checks out git branch and sets status to "In Progress"
+# Creates branch, assigns to you, sets "In Progress"
 ```
 
-### Create issue and assign to self
+### Complete Issue and Create PR
 ```bash
-linear-cli i create "Fix bug" -t ENG -a me -p 2
+# After committing changes
+linear-cli g pr LIN-123
+linear-cli i update LIN-123 -s Done
 ```
 
-### Update issue with labels
+### Find and Update Issue
 ```bash
-linear-cli i update LIN-123 -l bug -l urgent
+# Search
+linear-cli s issues "login bug" --output json
+
+# Update the found issue
+linear-cli i update LIN-456 -s "In Progress" -a me
 ```
 
-### Get current issue from git branch
+### Get Issue from Current Branch
 ```bash
 linear-cli context --output json
+# Returns issue details based on branch name
 ```
 
-### Batch operations
-```bash
-# Get multiple issues
-linear-cli i get LIN-1 LIN-2 LIN-3 --output json
+---
 
-# Read IDs from stdin
-echo "LIN-1\nLIN-2" | linear-cli i get -
-```
+## Tips
+
+1. **Use short aliases**: `i` (issues), `t` (teams), `p` (projects), `s` (search), `g` (git), `cm` (comments)
+2. **Always `--output json`** for parsing
+3. **Use `--compact`** to save tokens
+4. **Use `--fields`** to fetch only needed data
+5. **Use `--id-only`** when chaining commands
+6. **Check exit codes** for error handling
+7. **Use `--dry-run`** to preview create operations
