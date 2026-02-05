@@ -39,6 +39,30 @@ cd linear-cli && cargo build --release
 
 Pre-built binaries available at [GitHub Releases](https://github.com/Finesssee/linear-cli/releases).
 
+## Agent Skills
+
+**linear-cli includes Agent Skills** for AI coding assistants (Claude Code, Cursor, Codex, etc.).
+
+```bash
+# Install skills for your AI agent
+npx skills add Finesssee/linear-cli
+
+# Or install specific skills
+npx skills add Finesssee/linear-cli --skill linear-cli
+npx skills add Finesssee/linear-cli --skill linear-issues
+```
+
+**Available skills:**
+| Skill | Description |
+|-------|-------------|
+| `linear-cli` | Complete CLI reference - all commands, flags, workflows |
+| `linear-issues` | Issue management - list, create, update, start/stop work |
+| `linear-pr` | GitHub PR creation linked to Linear issues |
+| `linear-search` | Search issues and projects |
+| `linear-uploads` | Download attachments and images |
+
+Skills are 10-50x more token-efficient than MCP tools.
+
 ## Quick Start
 
 ```bash
@@ -116,7 +140,8 @@ linear-cli rel add LIN-123 blocks LIN-456       # LIN-123 blocks LIN-456
 linear-cli rel list LIN-123                     # List issue relations
 
 # JSON output (great for AI agents)
-linear-cli i get LIN-123 --output json
+linear-cli i get LIN-123 --output json --compact
+linear-cli i list --output json --fields identifier,title,state.name
 linear-cli cm list ISSUE_ID --output ndjson
 
 # Pagination + filters
@@ -172,7 +197,6 @@ Cache is scoped per profile at `~/.config/linear-cli/cache/{profile}/`.
 - [Usage Examples](docs/examples.md) - Detailed command examples
 - [Workflows](docs/workflows.md) - Common workflow patterns
 - [AI Agent Integration](docs/ai-agents.md) - Setup for Claude Code, Cursor, OpenAI Codex
-- [Agent Skills](docs/skills.md) - Pre-built skills for Claude Code and OpenAI Codex
 - [JSON Samples](docs/json/README.md) - Example JSON output shapes
 - [JSON Schema](docs/json/schema.json) - Schema version reference
 - [Shell Completions](docs/shell-completions.md) - Tab completion setup
@@ -182,12 +206,14 @@ Cache is scoped per profile at `~/.config/linear-cli/cache/{profile}/`.
 | Feature | @linear/cli | linear-go | linear-cli |
 |---------|---------------|-------------|--------------|
 | Last updated | 2021 | 2023 | 2026 |
+| Agent Skills | No | No | Yes |
 | Git PR creation | No | No | Yes |
 | jj (Jujutsu) support | No | No | Yes |
 | Interactive TUI | No | No | Yes |
 | Bulk operations | No | No | Yes |
 | Multiple workspaces | No | No | Yes |
 | JSON output | No | Yes | Yes |
+
 ## Contributing
 
 Contributions welcome! Please open an issue or submit a pull request.
@@ -195,5 +221,3 @@ Contributions welcome! Please open an issue or submit a pull request.
 ## License
 
 [MIT](LICENSE)
-
-

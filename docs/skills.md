@@ -1,121 +1,101 @@
 # Agent Skills
 
-`linear-cli` includes pre-built skills for AI coding assistants. Skills provide contextual documentation that agents can load when performing specific tasks.
+`linear-cli` includes Agent Skills for AI coding assistants. Skills provide contextual documentation that agents can load when performing Linear tasks.
 
-## Supported Agents
+## Installation
 
-| Agent | Skills Location | Skill File |
-|-------|-----------------|------------|
-| Claude Code | `.claude/skills/` | `SKILL.md` |
-| OpenAI Codex | `.codex/skills/` | `AGENTS.md` |
+```bash
+# Install all skills
+npx skills add Finesssee/linear-cli
+
+# Install specific skill
+npx skills add Finesssee/linear-cli --skill linear-cli
+
+# Install globally (available in all projects)
+npx skills add Finesssee/linear-cli -g
+```
 
 ## Available Skills
 
 | Skill | Description |
 |-------|-------------|
-| `linear-issues` | Manage issues - list, create, update, start/stop work |
-| `linear-pr` | Create GitHub PRs linked to Linear issues |
+| `linear-cli` | Complete CLI reference - all commands, flags, workflows |
+| `linear-issues` | Issue management - list, create, update, start/stop work |
+| `linear-pr` | GitHub PR creation linked to Linear issues |
 | `linear-search` | Search issues and projects |
 | `linear-uploads` | Download attachments and images |
 
-## Installation
+## Supported Agents
 
-### Option 1: Clone to Your Project
+Skills work with any agent that supports the [Agent Skills](https://agentskills.io) format:
 
-Copy the skills directories to your project:
+- Claude Code
+- OpenAI Codex
+- Cursor
+- Amp
+- Roo Code
+- Gemini CLI
+- And many more
 
-```bash
-# For Claude Code
-cp -r /path/to/linear-cli/.claude/skills/* /your/project/.claude/skills/
+## Why Skills?
 
-# For OpenAI Codex
-cp -r /path/to/linear-cli/.codex/skills/* /your/project/.codex/skills/
-```
+Skills are 10-50x more token-efficient than MCP tools:
 
-### Option 2: Symlink (Recommended)
+- **MCP tools**: Each API call returns full JSON, uses many tokens
+- **Skills**: Agent learns commands once, uses CLI directly
 
-Symlink the skills from your linear-cli installation:
-
-```bash
-# Find where linear-cli is installed
-which linear-cli  # or: where linear-cli on Windows
-
-# Assuming it's installed via cargo
-SKILLS_SRC="$HOME/.cargo/git/checkouts/linear-cli-*/master"
-
-# For Claude Code
-ln -s "$SKILLS_SRC/.claude/skills" /your/project/.claude/skills
-
-# For OpenAI Codex
-ln -s "$SKILLS_SRC/.codex/skills" /your/project/.codex/skills
-```
-
-### Option 3: Global Installation
-
-For Claude Code, you can install skills globally:
+## Viewing Installed Skills
 
 ```bash
-# Copy to global Claude config
-mkdir -p ~/.claude/skills
-cp -r /path/to/linear-cli/.claude/skills/* ~/.claude/skills/
+# List installed skills
+npx skills list
+
+# List globally installed
+npx skills list -g
 ```
 
-## How Skills Work
+## Skill Contents
 
-### Claude Code
+Each skill contains:
 
-Claude Code loads skills based on the `description` field in `SKILL.md`. When you ask about Linear issues, PRs, or uploads, Claude automatically loads the relevant skill.
+- **Frontmatter**: Name, description, allowed tools
+- **Commands**: CLI commands with examples
+- **Flags**: Agent-optimized flags (`--output json`, `--compact`, etc.)
+- **Exit codes**: For error handling
+- **Workflows**: Common task patterns
 
-Example `SKILL.md` structure:
+Example skill structure:
 ```yaml
 ---
 name: linear-issues
-description: Manage Linear issues - list, create, update, start/stop work.
+description: Manage Linear issues...
 allowed-tools: Bash
 ---
 
 # Linear Issues
-[Documentation content...]
+
+## List Issues
+\`\`\`bash
+linear-cli i list --output json
+\`\`\`
 ```
 
-### OpenAI Codex
-
-Codex reads `AGENTS.md` files for contextual instructions. Place skills in `.codex/skills/` directories.
-
-## Verifying Installation
-
-### Claude Code
-
-Ask Claude: "What Linear commands are available?"
-
-Claude should reference the skills and show commands like:
-- `linear-cli i list`
-- `linear-cli i create "Title" -t TEAM`
-- etc.
-
-### OpenAI Codex
-
-Ask Codex to work with Linear issues. It should use `linear-cli` commands rather than suggesting MCP tools.
-
-## Creating Custom Skills
-
-You can extend the skills or create new ones:
+## Updating Skills
 
 ```bash
-# Create a new skill for your workflow
-mkdir -p .claude/skills/my-workflow
-cat > .claude/skills/my-workflow/SKILL.md << 'EOF'
----
-name: my-workflow
-description: Custom Linear workflow for my team
-allowed-tools: Bash
----
+# Check for updates
+npx skills check
 
-# My Custom Workflow
+# Update all skills
+npx skills update
+```
 
-## Daily Standup
-\`\`\`bash
-linear-cli i list -s "In Progress" --mine
-\`\`\`
-EOF
+## Removing Skills
+
+```bash
+# Remove specific skill
+npx skills remove --skill linear-issues
+
+# Remove all linear-cli skills
+npx skills remove Finesssee/linear-cli
 ```
