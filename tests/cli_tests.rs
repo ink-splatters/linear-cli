@@ -128,3 +128,170 @@ fn test_invalid_command() {
     assert_ne!(code, 0);
     assert!(stderr.contains("error") || stderr.contains("invalid"));
 }
+
+// --- Additional alias tests ---
+
+#[test]
+fn test_teams_alias() {
+    let (code1, stdout1, _) = run_cli(&["t", "--help"]);
+    let (code2, stdout2, _) = run_cli(&["teams", "--help"]);
+    assert_eq!(code1, 0);
+    assert_eq!(code2, 0);
+    assert_eq!(stdout1, stdout2);
+}
+
+#[test]
+fn test_comments_alias() {
+    let (code1, stdout1, _) = run_cli(&["cm", "--help"]);
+    let (code2, stdout2, _) = run_cli(&["comments", "--help"]);
+    assert_eq!(code1, 0);
+    assert_eq!(code2, 0);
+    assert_eq!(stdout1, stdout2);
+}
+
+#[test]
+fn test_git_alias() {
+    let (code1, stdout1, _) = run_cli(&["g", "--help"]);
+    let (code2, stdout2, _) = run_cli(&["git", "--help"]);
+    assert_eq!(code1, 0);
+    assert_eq!(code2, 0);
+    assert_eq!(stdout1, stdout2);
+}
+
+#[test]
+fn test_search_alias() {
+    let (code1, stdout1, _) = run_cli(&["s", "--help"]);
+    let (code2, stdout2, _) = run_cli(&["search", "--help"]);
+    assert_eq!(code1, 0);
+    assert_eq!(code2, 0);
+    assert_eq!(stdout1, stdout2);
+}
+
+// --- Help text completeness ---
+
+#[test]
+fn test_notifications_help() {
+    let (code, stdout, _stderr) = run_cli(&["notifications", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("list"));
+    assert!(stdout.contains("read"));
+}
+
+#[test]
+fn test_labels_help() {
+    let (code, stdout, _stderr) = run_cli(&["labels", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("list"));
+}
+
+#[test]
+fn test_cycles_help() {
+    let (code, stdout, _stderr) = run_cli(&["cycles", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("list"));
+}
+
+#[test]
+fn test_cache_help() {
+    let (code, stdout, _stderr) = run_cli(&["cache", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("status"));
+    assert!(stdout.contains("clear"));
+}
+
+#[test]
+fn test_export_help() {
+    let (code, stdout, _stderr) = run_cli(&["export", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("csv"));
+}
+
+#[test]
+fn test_uploads_help() {
+    let (code, stdout, _stderr) = run_cli(&["uploads", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("fetch"));
+}
+
+// --- Subcommand help tests ---
+
+#[test]
+fn test_issues_list_help() {
+    let (code, stdout, _stderr) = run_cli(&["issues", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--team"));
+    assert!(stdout.contains("--state"));
+    assert!(stdout.contains("--assignee"));
+}
+
+#[test]
+fn test_issues_create_help() {
+    let (code, stdout, _stderr) = run_cli(&["issues", "create", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--team"));
+    assert!(stdout.contains("--priority"));
+    assert!(stdout.contains("--description"));
+    assert!(stdout.contains("--dry-run"));
+}
+
+#[test]
+fn test_bulk_update_state_help() {
+    let (code, stdout, _stderr) = run_cli(&["bulk", "update-state", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("STATE"));
+    assert!(stdout.contains("--issues"));
+}
+
+// --- Global flags ---
+
+#[test]
+fn test_quiet_flag_exists() {
+    let (code, stdout, _stderr) = run_cli(&["--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--quiet") || stdout.contains("-q"));
+}
+
+#[test]
+fn test_dry_run_flag_exists() {
+    let (code, stdout, _stderr) = run_cli(&["--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--dry-run"));
+}
+
+#[test]
+fn test_compact_flag_exists() {
+    let (code, stdout, _stderr) = run_cli(&["--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--compact"));
+}
+
+#[test]
+fn test_fields_flag_exists() {
+    let (code, stdout, _stderr) = run_cli(&["--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--fields"));
+}
+
+// --- CLI name consistency ---
+
+#[test]
+fn test_binary_name_in_help() {
+    let (code, stdout, _stderr) = run_cli(&["--help"]);
+    assert_eq!(code, 0);
+    // The help should show the binary name
+    assert!(
+        stdout.contains("linear-cli") || stdout.contains("Usage:"),
+        "Help output should contain binary name or usage info"
+    );
+}
+
+#[test]
+fn test_version_contains_semver() {
+    let (code, stdout, _stderr) = run_cli(&["--version"]);
+    assert_eq!(code, 0);
+    // Version should contain a semver-like pattern (digit.digit)
+    assert!(
+        stdout.chars().any(|c| c == '.'),
+        "Version output should contain a dot-separated version number"
+    );
+}

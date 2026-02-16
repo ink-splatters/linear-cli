@@ -564,4 +564,227 @@ mod tests {
         assert_eq!(values[1]["priority"], 2);
         assert_eq!(values[2]["priority"], 3);
     }
+
+    #[test]
+    fn test_sort_desc_order() {
+        let mut values = vec![
+            json!({"priority": 1}),
+            json!({"priority": 3}),
+            json!({"priority": 2}),
+        ];
+        sort_values(&mut values, "priority", SortOrder::Desc);
+        assert_eq!(values[0]["priority"], 3);
+        assert_eq!(values[1]["priority"], 2);
+        assert_eq!(values[2]["priority"], 1);
+    }
+
+    #[test]
+    fn test_sort_string_field() {
+        let mut values = vec![
+            json!({"name": "Charlie"}),
+            json!({"name": "Alice"}),
+            json!({"name": "Bob"}),
+        ];
+        sort_values(&mut values, "name", SortOrder::Asc);
+        assert_eq!(values[0]["name"], "Alice");
+        assert_eq!(values[1]["name"], "Bob");
+        assert_eq!(values[2]["name"], "Charlie");
+    }
+
+    #[test]
+    fn test_sort_with_nulls_last() {
+        let mut values = vec![
+            json!({"priority": null}),
+            json!({"priority": 1}),
+            json!({"priority": 2}),
+        ];
+        sort_values(&mut values, "priority", SortOrder::Asc);
+        assert_eq!(values[0]["priority"], 1);
+        assert_eq!(values[1]["priority"], 2);
+        assert!(values[2]["priority"].is_null());
+    }
+
+    #[test]
+    fn test_sort_missing_field() {
+        let mut values = vec![
+            json!({"name": "Bob"}),
+            json!({"name": "Alice", "priority": 1}),
+            json!({"name": "Charlie"}),
+        ];
+        sort_values(&mut values, "priority", SortOrder::Asc);
+        // Item with priority should be first, rest are null/missing
+        assert_eq!(values[0]["name"], "Alice");
+    }
+
+    #[test]
+    fn test_sort_preserves_order_for_equal_values() {
+        let mut values = vec![
+            json!({"name": "First", "priority": 1}),
+            json!({"name": "Second", "priority": 1}),
+            json!({"name": "Third", "priority": 1}),
+        ];
+        sort_values(&mut values, "priority", SortOrder::Asc);
+        // Stable sort: original order preserved for equal values
+        assert_eq!(values[0]["name"], "First");
+        assert_eq!(values[1]["name"], "Second");
+        assert_eq!(values[2]["name"], "Third");
+    }
+
+    #[test]
+    fn test_filter_values_eq() {
+        let mut values = vec![
+            json!({"status": "Done", "name": "A"}),
+            json!({"status": "In Progress", "name": "B"}),
+            json!({"status": "Done", "name": "C"}),
+        ];
+        let filters = parse_filters(&["status=Done".to_string()]).unwrap();
+        filter_values(&mut values, &filters);
+        assert_eq!(values.len(), 2);
+        assert_eq!(values[0]["name"], "A");
+        assert_eq!(values[1]["name"], "C");
+    }
+
+    #[test]
+    fn test_filter_values_not_eq() {
+        let mut values = vec![
+            json!({"priority": 1, "name": "A"}),
+            json!({"priority": 2, "name": "B"}),
+            json!({"priority": 1, "name": "C"}),
+        ];
+        let filters = parse_filters(&["priority!=1".to_string()]).unwrap();
+        filter_values(&mut values, &filters);
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0]["name"], "B");
+    }
+
+    #[test]
+    fn test_filter_values_contains() {
+        let mut values = vec![
+            json!({"title": "Fix login bug", "id": 1}),
+            json!({"title": "Add feature", "id": 2}),
+            json!({"title": "Bug in signup", "id": 3}),
+        ];
+        let filters = parse_filters(&["title~=bug".to_string()]).unwrap();
+        filter_values(&mut values, &filters);
+        assert_eq!(values.len(), 2);
+        assert_eq!(values[0]["id"], 1);
+        assert_eq!(values[1]["id"], 3);
+    }
+
+    #[test]
+    fn test_filter_values_nested_path() {
+        let mut values = vec![
+            json!({"name": "A", "state": {"name": "Done"}}),
+            json!({"name": "B", "state": {"name": "Backlog"}}),
+            json!({"name": "C", "state": {"name": "Done"}}),
+        ];
+        let filters = parse_filters(&["state.name=Done".to_string()]).unwrap();
+        filter_values(&mut values, &filters);
+        assert_eq!(values.len(), 2);
+        assert_eq!(values[0]["name"], "A");
+        assert_eq!(values[1]["name"], "C");
+    }
+
+    #[test]
+    fn test_filter_case_insensitive() {
+        let mut values = vec![
+            json!({"status": "DONE"}),
+            json!({"status": "done"}),
+            json!({"status": "Done"}),
+        ];
+        let filters = parse_filters(&["status=done".to_string()]).unwrap();
+        filter_values(&mut values, &filters);
+        assert_eq!(values.len(), 3);
+    }
+
+    #[test]
+    fn test_filter_multiple_conditions() {
+        let mut values = vec![
+            json!({"status": "Done", "priority": 1}),
+            json!({"status": "Done", "priority": 2}),
+            json!({"status": "Backlog", "priority": 1}),
+        ];
+        let filters =
+            parse_filters(&["status=Done".to_string(), "priority=1".to_string()]).unwrap();
+        filter_values(&mut values, &filters);
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0]["priority"], 1);
+        assert_eq!(values[0]["status"], "Done");
+    }
+
+    #[test]
+    fn test_filter_no_filters_is_noop() {
+        let mut values = vec![json!({"a": 1}), json!({"a": 2})];
+        filter_values(&mut values, &[]);
+        assert_eq!(values.len(), 2);
+    }
+
+    #[test]
+    fn test_select_fields_single() {
+        let value = json!({"id": "abc", "name": "Test", "description": "Long desc"});
+        let fields = vec!["name".to_string()];
+        let result = select_fields(&value, &fields);
+        assert_eq!(result, json!({"name": "Test"}));
+    }
+
+    #[test]
+    fn test_select_fields_nested() {
+        let value = json!({"id": "abc", "state": {"name": "Done", "id": "s1"}});
+        let fields = vec!["id".to_string(), "state.name".to_string()];
+        let result = select_fields(&value, &fields);
+        assert_eq!(result, json!({"id": "abc", "state": {"name": "Done"}}));
+    }
+
+    #[test]
+    fn test_select_fields_array() {
+        let value = json!([
+            {"id": "1", "name": "A", "extra": true},
+            {"id": "2", "name": "B", "extra": false},
+        ]);
+        let fields = vec!["id".to_string(), "name".to_string()];
+        let result = select_fields(&value, &fields);
+        assert_eq!(
+            result,
+            json!([
+                {"id": "1", "name": "A"},
+                {"id": "2", "name": "B"},
+            ])
+        );
+    }
+
+    #[test]
+    fn test_select_fields_missing_field() {
+        let value = json!({"id": "abc", "name": "Test"});
+        let fields = vec!["id".to_string(), "nonexistent".to_string()];
+        let result = select_fields(&value, &fields);
+        assert_eq!(result, json!({"id": "abc"}));
+    }
+
+    #[test]
+    fn test_render_template_simple() {
+        let value = json!({"name": "Test", "id": "abc"});
+        let result = render_template("{{name}} ({{id}})", &value);
+        assert_eq!(result, "Test (abc)");
+    }
+
+    #[test]
+    fn test_render_template_nested() {
+        let value = json!({"name": "Test", "state": {"name": "Done"}});
+        let result = render_template("{{name}}: {{state.name}}", &value);
+        assert_eq!(result, "Test: Done");
+    }
+
+    #[test]
+    fn test_render_template_missing_field() {
+        let value = json!({"name": "Test"});
+        let result = render_template("{{name}} {{missing}}", &value);
+        assert_eq!(result, "Test ");
+    }
+
+    #[test]
+    fn test_render_template_with_spaces() {
+        let value = json!({"name": "Test"});
+        let result = render_template("{{ name }}", &value);
+        assert_eq!(result, "Test");
+    }
 }

@@ -287,3 +287,69 @@ where
 
     Ok(total)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pagination_options_default() {
+        let opts = PaginationOptions::default();
+        assert!(opts.limit.is_none());
+        assert!(opts.after.is_none());
+        assert!(opts.before.is_none());
+        assert!(opts.page_size.is_none());
+        assert!(!opts.all);
+    }
+
+    #[test]
+    fn test_with_default_limit_sets_limit_when_none() {
+        let opts = PaginationOptions::default();
+        let result = opts.with_default_limit(50);
+        assert_eq!(result.limit, Some(50));
+    }
+
+    #[test]
+    fn test_with_default_limit_preserves_existing_limit() {
+        let opts = PaginationOptions {
+            limit: Some(10),
+            ..Default::default()
+        };
+        let result = opts.with_default_limit(50);
+        assert_eq!(result.limit, Some(10));
+    }
+
+    #[test]
+    fn test_with_default_limit_skipped_when_all() {
+        let opts = PaginationOptions {
+            all: true,
+            ..Default::default()
+        };
+        let result = opts.with_default_limit(50);
+        assert!(result.limit.is_none());
+    }
+
+    #[test]
+    fn test_effective_page_size_default() {
+        let opts = PaginationOptions::default();
+        assert_eq!(opts.effective_page_size(100), 100);
+    }
+
+    #[test]
+    fn test_effective_page_size_custom() {
+        let opts = PaginationOptions {
+            page_size: Some(25),
+            ..Default::default()
+        };
+        assert_eq!(opts.effective_page_size(100), 25);
+    }
+
+    #[test]
+    fn test_effective_page_size_minimum_one() {
+        let opts = PaginationOptions {
+            page_size: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(opts.effective_page_size(100), 1);
+    }
+}

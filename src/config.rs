@@ -347,3 +347,85 @@ pub fn workspace_remove(name: &str) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_default() {
+        let config = Config::default();
+        assert!(config.current.is_none());
+        assert!(config.workspaces.is_empty());
+        assert!(config.api_key.is_none());
+    }
+
+    #[test]
+    fn test_config_serialize_deserialize() {
+        let mut config = Config::default();
+        config.current = Some("prod".to_string());
+        config.workspaces.insert(
+            "prod".to_string(),
+            Workspace {
+                api_key: "lin_api_prod123".to_string(),
+            },
+        );
+        config.workspaces.insert(
+            "staging".to_string(),
+            Workspace {
+                api_key: "lin_api_staging456".to_string(),
+            },
+        );
+
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let parsed: Config = toml::from_str(&toml_str).unwrap();
+
+        assert_eq!(parsed.current, Some("prod".to_string()));
+        assert_eq!(parsed.workspaces.len(), 2);
+        assert_eq!(parsed.workspaces["prod"].api_key, "lin_api_prod123");
+        assert_eq!(parsed.workspaces["staging"].api_key, "lin_api_staging456");
+    }
+
+    #[test]
+    fn test_config_legacy_migration_parse() {
+        // Legacy config format with top-level api_key
+        let toml_str = r#"
+            api_key = "lin_api_legacy_key"
+        "#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.api_key, Some("lin_api_legacy_key".to_string()));
+        assert!(config.workspaces.is_empty());
+        assert!(config.current.is_none());
+    }
+
+    #[test]
+    fn test_config_with_workspaces_parse() {
+        let toml_str = r#"
+            current = "default"
+
+            [workspaces.default]
+            api_key = "lin_api_key1"
+
+            [workspaces.staging]
+            api_key = "lin_api_key2"
+        "#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.current, Some("default".to_string()));
+        assert_eq!(config.workspaces.len(), 2);
+        assert!(config.api_key.is_none());
+    }
+
+    #[test]
+    fn test_config_api_key_not_serialized_when_none() {
+        let config = Config {
+            current: Some("default".to_string()),
+            workspaces: HashMap::new(),
+            api_key: None,
+        };
+
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        assert!(!toml_str.contains("api_key"));
+    }
+}
