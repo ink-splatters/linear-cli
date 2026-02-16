@@ -7,6 +7,7 @@ use crate::api::LinearClient;
 use crate::output::{print_json, OutputOptions};
 use crate::pagination::PaginationOptions;
 use crate::text::truncate;
+use crate::types::Initiative;
 use crate::DISPLAY_OPTIONS;
 
 #[derive(Subcommand, Debug)]
@@ -80,18 +81,23 @@ async fn list_initiatives(output: &OutputOptions) -> Result<()> {
             .as_array()
             .unwrap_or(&vec![])
             .iter()
-            .map(|i| InitiativeRow {
-                id: i["id"].as_str().unwrap_or("-").to_string(),
-                name: truncate(i["name"].as_str().unwrap_or("-"), max_width),
-                status: i["status"].as_str().unwrap_or("-").to_string(),
-                progress: format!(
+            .filter_map(|v| {
+                let i = serde_json::from_value::<Initiative>(v.clone()).ok()?;
+                let progress = format!(
                     "{}%",
-                    (i["progress"].as_f64().unwrap_or(0.0) * 100.0) as i32
-                ),
-                project_count: i["projects"]["nodes"]
+                    (v["progress"].as_f64().unwrap_or(0.0) * 100.0) as i32
+                );
+                let project_count = v["projects"]["nodes"]
                     .as_array()
                     .map(|a| a.len().to_string())
-                    .unwrap_or_else(|| "0".to_string()),
+                    .unwrap_or_else(|| "0".to_string());
+                Some(InitiativeRow {
+                    id: i.id,
+                    name: truncate(&i.name, max_width),
+                    status: i.status.as_deref().unwrap_or("-").to_string(),
+                    progress,
+                    project_count,
+                })
             })
             .collect();
 

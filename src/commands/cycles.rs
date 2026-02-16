@@ -12,6 +12,7 @@ use crate::output::{
 };
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
+use crate::types::{Cycle, IssueRef, WorkflowState};
 
 #[derive(Subcommand)]
 pub enum CycleCommands {
@@ -146,32 +147,32 @@ async fn list_cycles(team: &str, include_all: bool, output: &OutputOptions) -> R
     let width = display_options().max_width(30);
     let rows: Vec<CycleRow> = filtered
         .iter()
+        .filter_map(|v| serde_json::from_value::<Cycle>(v.clone()).ok())
         .map(|c| {
-            let progress = c["progress"].as_f64().unwrap_or(0.0);
+            let progress = c.progress.unwrap_or(0.0);
 
-            let status = if !c["completedAt"].is_null() {
+            let status = if c.completed_at.is_some() {
                 "Completed".to_string()
             } else {
                 "Active".to_string()
             };
 
             CycleRow {
-                name: truncate(c["name"].as_str().unwrap_or("-"), width),
-                number: c["number"]
-                    .as_i64()
-                    .map(|n| n.to_string())
-                    .unwrap_or("-".to_string()),
+                name: truncate(c.name.as_deref().unwrap_or("-"), width),
+                number: c.number.map(|n| n.to_string()).unwrap_or("-".to_string()),
                 status,
-                start_date: c["startsAt"]
-                    .as_str()
+                start_date: c
+                    .starts_at
+                    .as_deref()
                     .map(|s| s.chars().take(10).collect())
                     .unwrap_or("-".to_string()),
-                end_date: c["endsAt"]
-                    .as_str()
+                end_date: c
+                    .ends_at
+                    .as_deref()
                     .map(|s| s.chars().take(10).collect())
                     .unwrap_or("-".to_string()),
                 progress: format!("{:.0}%", progress * 100.0),
-                id: c["id"].as_str().unwrap_or("").to_string(),
+                id: c.id,
             }
         })
         .collect();
@@ -242,17 +243,20 @@ async fn current_cycle(team: &str, output: &OutputOptions) -> Result<()> {
     }
 
     let team_name = team_data["name"].as_str().unwrap_or("");
-    let cycle = &team_data["activeCycle"];
+    let cycle_val = &team_data["activeCycle"];
 
-    if cycle.is_null() {
+    if cycle_val.is_null() {
         println!("No active cycle for team '{}'.", team_name);
         return Ok(());
     }
 
-    let progress = cycle["progress"].as_f64().unwrap_or(0.0);
-    let cycle_number = cycle["number"].as_i64().unwrap_or(0);
+    let cycle: Cycle = serde_json::from_value(cycle_val.clone())
+        .map_err(|e| anyhow::anyhow!("Failed to parse cycle data: {}", e))?;
+
+    let progress = cycle.progress.unwrap_or(0.0);
+    let cycle_number = cycle.number.unwrap_or(0);
     let default_name = format!("Cycle {}", cycle_number);
-    let cycle_name = cycle["name"].as_str().unwrap_or(&default_name);
+    let cycle_name = cycle.name.as_deref().unwrap_or(&default_name);
 
     println!("{}", format!("Current Cycle: {}", cycle_name).bold());
     println!("{}", "-".repeat(40));
@@ -261,34 +265,47 @@ async fn current_cycle(team: &str, output: &OutputOptions) -> Result<()> {
     println!("Cycle Number: {}", cycle_number);
     println!(
         "Start Date: {}",
-        cycle["startsAt"].as_str().map(|s| &s[..10]).unwrap_or("-")
+        cycle.starts_at.as_deref().map(|s| &s[..10]).unwrap_or("-")
     );
     println!(
         "End Date: {}",
-        cycle["endsAt"].as_str().map(|s| &s[..10]).unwrap_or("-")
+        cycle.ends_at.as_deref().map(|s| &s[..10]).unwrap_or("-")
     );
     println!("Progress: {:.0}%", progress * 100.0);
-    println!("ID: {}", cycle["id"].as_str().unwrap_or("-"));
+    println!("ID: {}", cycle.id);
 
     // Show issues in the cycle
-    let issues = cycle["issues"]["nodes"].as_array();
+    let issues = cycle_val["issues"]["nodes"].as_array();
     if let Some(issues) = issues {
         if !issues.is_empty() {
             println!("\n{}", "Issues in this cycle:".bold());
-            for issue in issues {
-                let identifier = issue["identifier"].as_str().unwrap_or("");
+            for issue_val in issues {
+                let issue_ref: Option<IssueRef> = serde_json::from_value(issue_val.clone()).ok();
+                let state: Option<WorkflowState> =
+                    serde_json::from_value(issue_val["state"].clone()).ok();
+
+                let identifier = issue_ref
+                    .as_ref()
+                    .map(|i| i.identifier.as_str())
+                    .unwrap_or("");
                 let title = truncate(
-                    issue["title"].as_str().unwrap_or(""),
+                    issue_ref
+                        .as_ref()
+                        .and_then(|i| i.title.as_deref())
+                        .unwrap_or(""),
                     display_options().max_width(50),
                 );
-                let state = issue["state"]["name"].as_str().unwrap_or("");
-                let state_type = issue["state"]["type"].as_str().unwrap_or("");
+                let state_name = state.as_ref().map(|s| s.name.as_str()).unwrap_or("");
+                let state_type = state
+                    .as_ref()
+                    .and_then(|s| s.state_type.as_deref())
+                    .unwrap_or("");
 
                 let state_colored = match state_type {
-                    "completed" => state.green().to_string(),
-                    "started" => state.yellow().to_string(),
-                    "canceled" | "cancelled" => state.red().to_string(),
-                    _ => state.dimmed().to_string(),
+                    "completed" => state_name.green().to_string(),
+                    "started" => state_name.yellow().to_string(),
+                    "canceled" | "cancelled" => state_name.red().to_string(),
+                    _ => state_name.dimmed().to_string(),
                 };
 
                 println!("  {} {} [{}]", identifier.cyan(), title, state_colored);

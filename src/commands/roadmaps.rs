@@ -7,6 +7,7 @@ use crate::api::LinearClient;
 use crate::output::{print_json, OutputOptions};
 use crate::pagination::PaginationOptions;
 use crate::text::truncate;
+use crate::types::Roadmap;
 use crate::DISPLAY_OPTIONS;
 
 #[derive(Subcommand, Debug)]
@@ -77,14 +78,18 @@ async fn list_roadmaps(output: &OutputOptions) -> Result<()> {
             .as_array()
             .unwrap_or(&vec![])
             .iter()
-            .map(|r| RoadmapRow {
-                id: r["id"].as_str().unwrap_or("-").to_string(),
-                name: truncate(r["name"].as_str().unwrap_or("-"), max_width),
-                description: truncate(r["description"].as_str().unwrap_or("-"), max_width),
-                project_count: r["projects"]["nodes"]
+            .filter_map(|v| {
+                let r = serde_json::from_value::<Roadmap>(v.clone()).ok()?;
+                let project_count = v["projects"]["nodes"]
                     .as_array()
                     .map(|a| a.len().to_string())
-                    .unwrap_or_else(|| "0".to_string()),
+                    .unwrap_or_else(|| "0".to_string());
+                Some(RoadmapRow {
+                    id: r.id,
+                    name: truncate(&r.name, max_width),
+                    description: truncate(r.description.as_deref().unwrap_or("-"), max_width),
+                    project_count,
+                })
             })
             .collect();
 

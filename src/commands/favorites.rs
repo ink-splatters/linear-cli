@@ -4,6 +4,7 @@ use serde_json::json;
 
 use crate::api::LinearClient;
 use crate::output::{print_json, OutputOptions};
+use crate::types::Favorite;
 
 #[derive(Subcommand, Debug)]
 pub enum FavoriteCommands {
@@ -144,19 +145,27 @@ async fn remove_favorite(id: &str, output: &OutputOptions) -> Result<()> {
     "#;
 
     let result = client.query(query, None).await?;
-    let favorites = result["data"]["favorites"]["nodes"]
+    let favorites: Vec<Favorite> = result["data"]["favorites"]["nodes"]
         .as_array()
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<Favorite>(v).ok())
+        .collect();
 
     let favorite = favorites.iter().find(|f| {
-        f["issue"]["identifier"].as_str() == Some(id) || f["project"]["id"].as_str() == Some(id)
+        f.issue
+            .as_ref()
+            .map(|i| i.identifier.as_str() == id)
+            .unwrap_or(false)
+            || f.project
+                .as_ref()
+                .map(|p| p.id.as_str() == id)
+                .unwrap_or(false)
     });
 
     if let Some(fav) = favorite {
-        let Some(fav_id) = fav["id"].as_str() else {
-            anyhow::bail!("Invalid favorite: missing id");
-        };
+        let fav_id = &fav.id;
         let mutation = r#"
             mutation($id: String!) {
                 favoriteDelete(id: $id) {

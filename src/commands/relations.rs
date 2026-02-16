@@ -6,6 +6,7 @@ use tabled::{Table, Tabled};
 use crate::api::LinearClient;
 use crate::output::{print_json, print_json_owned, OutputOptions};
 use crate::text::truncate;
+use crate::types::{IssueRef, IssueRelation};
 use crate::DISPLAY_OPTIONS;
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -177,28 +178,37 @@ async fn list_relations(id: &str, output: &OutputOptions) -> Result<()> {
 
         // Parent
         if !issue["parent"].is_null() {
-            let parent = &issue["parent"];
-            println!("Parent:");
-            println!(
-                "  {} - {} ({})",
-                parent["identifier"].as_str().unwrap_or("-"),
-                truncate(parent["title"].as_str().unwrap_or("-"), max_width),
-                parent["state"]["name"].as_str().unwrap_or("-")
-            );
-            println!();
+            if let Ok(parent) = serde_json::from_value::<IssueRef>(issue["parent"].clone()) {
+                println!("Parent:");
+                println!(
+                    "  {} - {} ({})",
+                    parent.identifier,
+                    truncate(parent.title.as_deref().unwrap_or("-"), max_width),
+                    parent
+                        .state
+                        .as_ref()
+                        .map(|s| s.name.as_str())
+                        .unwrap_or("-")
+                );
+                println!();
+            }
         }
 
         // Children
         let children = issue["children"]["nodes"].as_array();
         if let Some(children) = children {
             if !children.is_empty() {
-                println!("Children ({}):", children.len());
-                for child in children {
+                let typed_children: Vec<IssueRef> = children
+                    .iter()
+                    .filter_map(|v| serde_json::from_value::<IssueRef>(v.clone()).ok())
+                    .collect();
+                println!("Children ({}):", typed_children.len());
+                for child in &typed_children {
                     println!(
                         "  {} - {} ({})",
-                        child["identifier"].as_str().unwrap_or("-"),
-                        truncate(child["title"].as_str().unwrap_or("-"), max_width),
-                        child["state"]["name"].as_str().unwrap_or("-")
+                        child.identifier,
+                        truncate(child.title.as_deref().unwrap_or("-"), max_width),
+                        child.state.as_ref().map(|s| s.name.as_str()).unwrap_or("-")
                     );
                 }
                 println!();
@@ -210,33 +220,49 @@ async fn list_relations(id: &str, output: &OutputOptions) -> Result<()> {
 
         // Outgoing relations
         if let Some(relations) = issue["relations"]["nodes"].as_array() {
-            for rel in relations {
-                let related = &rel["relatedIssue"];
-                rows.push(RelationRow {
-                    relation_type: rel["type"].as_str().unwrap_or("-").to_string(),
-                    issue: related["identifier"].as_str().unwrap_or("-").to_string(),
-                    title: truncate(related["title"].as_str().unwrap_or("-"), max_width),
-                    status: related["state"]["name"].as_str().unwrap_or("-").to_string(),
-                });
+            for rel in relations
+                .iter()
+                .filter_map(|v| serde_json::from_value::<IssueRelation>(v.clone()).ok())
+            {
+                if let Some(related) = &rel.related_issue {
+                    rows.push(RelationRow {
+                        relation_type: rel.relation_type.as_deref().unwrap_or("-").to_string(),
+                        issue: related.identifier.clone(),
+                        title: truncate(related.title.as_deref().unwrap_or("-"), max_width),
+                        status: related
+                            .state
+                            .as_ref()
+                            .map(|s| s.name.clone())
+                            .unwrap_or_else(|| "-".to_string()),
+                    });
+                }
             }
         }
 
         // Incoming relations
         if let Some(inverse) = issue["inverseRelations"]["nodes"].as_array() {
-            for rel in inverse {
-                let related = &rel["issue"];
-                let rel_type = match rel["type"].as_str() {
-                    Some("blocks") => "blocked by",
-                    Some("blockedBy") => "blocks",
-                    Some(t) => t,
-                    None => "-",
-                };
-                rows.push(RelationRow {
-                    relation_type: rel_type.to_string(),
-                    issue: related["identifier"].as_str().unwrap_or("-").to_string(),
-                    title: truncate(related["title"].as_str().unwrap_or("-"), max_width),
-                    status: related["state"]["name"].as_str().unwrap_or("-").to_string(),
-                });
+            for rel in inverse
+                .iter()
+                .filter_map(|v| serde_json::from_value::<IssueRelation>(v.clone()).ok())
+            {
+                if let Some(related) = &rel.issue {
+                    let rel_type = match rel.relation_type.as_deref() {
+                        Some("blocks") => "blocked by",
+                        Some("blockedBy") => "blocks",
+                        Some(t) => t,
+                        None => "-",
+                    };
+                    rows.push(RelationRow {
+                        relation_type: rel_type.to_string(),
+                        issue: related.identifier.clone(),
+                        title: truncate(related.title.as_deref().unwrap_or("-"), max_width),
+                        status: related
+                            .state
+                            .as_ref()
+                            .map(|s| s.name.clone())
+                            .unwrap_or_else(|| "-".to_string()),
+                    });
+                }
             }
         }
 
@@ -388,4 +414,29 @@ async fn remove_parent(id: &str, output: &OutputOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_relation_type_blocks() {
+        assert_eq!(RelationType::Blocks.to_api_string(), "blocks");
+    }
+
+    #[test]
+    fn test_relation_type_blocked_by() {
+        assert_eq!(RelationType::BlockedBy.to_api_string(), "blockedBy");
+    }
+
+    #[test]
+    fn test_relation_type_related() {
+        assert_eq!(RelationType::Related.to_api_string(), "related");
+    }
+
+    #[test]
+    fn test_relation_type_duplicate() {
+        assert_eq!(RelationType::Duplicate.to_api_string(), "duplicate");
+    }
 }

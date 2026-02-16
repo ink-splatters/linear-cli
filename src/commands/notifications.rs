@@ -11,6 +11,7 @@ use crate::output::{
 };
 use crate::pagination::{paginate_nodes, PaginationOptions};
 use crate::text::truncate;
+use crate::types::Notification;
 
 #[derive(Subcommand)]
 pub enum NotificationCommands {
@@ -158,22 +159,32 @@ async fn list_notifications(include_all: bool, output: &OutputOptions) -> Result
     let width = display_options().max_width(40);
     let rows: Vec<NotificationRow> = filtered
         .iter()
+        .filter_map(|v| serde_json::from_value::<Notification>(v.clone()).ok())
         .map(|n| {
-            let notification_type = n["type"].as_str().unwrap_or("unknown");
-            let issue_identifier = n["issue"]["identifier"].as_str().unwrap_or("-");
-            let issue_title = n["issue"]["title"].as_str().unwrap_or("");
+            let notification_type = n.notification_type.as_deref().unwrap_or("unknown");
+            let issue_identifier = n
+                .issue
+                .as_ref()
+                .map(|i| i.identifier.as_str())
+                .unwrap_or("-");
+            let issue_title = n
+                .issue
+                .as_ref()
+                .and_then(|i| i.title.as_deref())
+                .unwrap_or("");
 
             let truncated_title = truncate(issue_title, width);
 
-            let created_at = n["createdAt"]
-                .as_str()
+            let created_at = n
+                .created_at
+                .as_deref()
                 .unwrap_or("")
                 .split('T')
                 .next()
                 .unwrap_or("-")
                 .to_string();
 
-            let id = n["id"].as_str().unwrap_or("").to_string();
+            let id = n.id;
             let short_id = if id.len() > 8 {
                 format!("{}...", &id[..8])
             } else {
@@ -327,6 +338,77 @@ async fn mark_all_as_read() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_notification_type_comment() {
+        let result = format_notification_type("issueComment");
+        assert!(result.contains("Comment"));
+    }
+
+    #[test]
+    fn test_format_notification_type_mention() {
+        let result = format_notification_type("issueMention");
+        assert!(result.contains("Mention"));
+    }
+
+    #[test]
+    fn test_format_notification_type_assignment() {
+        let result = format_notification_type("issueAssignment");
+        assert!(result.contains("Assigned"));
+    }
+
+    #[test]
+    fn test_format_notification_type_status_changed() {
+        let result = format_notification_type("issueStatusChanged");
+        assert!(result.contains("Status"));
+    }
+
+    #[test]
+    fn test_format_notification_type_priority_changed() {
+        let result = format_notification_type("issuePriorityChanged");
+        assert!(result.contains("Priority"));
+    }
+
+    #[test]
+    fn test_format_notification_type_new_comment() {
+        let result = format_notification_type("issueNewComment");
+        assert!(result.contains("New Comment"));
+    }
+
+    #[test]
+    fn test_format_notification_type_subscribed() {
+        let result = format_notification_type("issueSubscribed");
+        assert!(result.contains("Subscribed"));
+    }
+
+    #[test]
+    fn test_format_notification_type_due() {
+        let result = format_notification_type("issueDue");
+        assert!(result.contains("Due"));
+    }
+
+    #[test]
+    fn test_format_notification_type_project_update() {
+        let result = format_notification_type("projectUpdate");
+        assert!(result.contains("Project"));
+    }
+
+    #[test]
+    fn test_format_notification_type_unknown_returns_raw_string() {
+        let result = format_notification_type("somethingNew");
+        assert_eq!(result, "somethingNew");
+    }
+
+    #[test]
+    fn test_format_notification_type_empty_string() {
+        let result = format_notification_type("");
+        assert_eq!(result, "");
+    }
 }
 
 async fn show_count(output: &OutputOptions) -> Result<()> {

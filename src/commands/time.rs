@@ -11,6 +11,7 @@ use crate::output::{
 };
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
+use crate::types::TimeEntry;
 
 #[derive(Subcommand)]
 pub enum TimeCommands {
@@ -306,22 +307,30 @@ async fn list_time_entries(issue_filter: Option<String>, output: &OutputOptions)
             let user_width = display_options().max_width(30);
             let rows: Vec<TimeEntryRow> = entries
                 .iter()
+                .filter_map(|v| serde_json::from_value::<TimeEntry>(v.clone()).ok())
                 .map(|e| {
-                    let duration_mins = e["duration"].as_i64().unwrap_or(0) as i32;
+                    let duration_mins = e.duration.unwrap_or(0) as i32;
                     TimeEntryRow {
-                        id: e["id"].as_str().unwrap_or("").chars().take(8).collect(),
+                        id: e.id.chars().take(8).collect(),
                         issue: truncate(
-                            e["issue"]["identifier"].as_str().unwrap_or("-"),
+                            e.issue
+                                .as_ref()
+                                .map(|i| i.identifier.as_str())
+                                .unwrap_or("-"),
                             issue_width,
                         ),
                         duration: format_duration(duration_mins),
-                        date: e["createdAt"]
-                            .as_str()
+                        date: e
+                            .created_at
+                            .as_deref()
                             .unwrap_or("")
                             .chars()
                             .take(10)
                             .collect(),
-                        user: truncate(e["user"]["name"].as_str().unwrap_or("-"), user_width),
+                        user: truncate(
+                            e.user.as_ref().map(|u| u.name.as_str()).unwrap_or("-"),
+                            user_width,
+                        ),
                     }
                 })
                 .collect();
