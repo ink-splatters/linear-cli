@@ -13,6 +13,7 @@ mod pagination;
 mod priority;
 mod retry;
 mod text;
+#[allow(dead_code)]
 mod types;
 mod vcs;
 
