@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
-use futures::future::join_all;
+use futures::stream::{self, StreamExt};
 use serde_json::json;
 
 use crate::api::{resolve_label_id, resolve_user_id, LinearClient};
@@ -181,17 +181,16 @@ async fn bulk_update_state(state: &str, issues: Vec<String>, output: &OutputOpti
     let client = LinearClient::new()?;
     let state_owned = state.to_string();
 
-    let futures: Vec<_> = issues
-        .iter()
+    let results: Vec<_> = stream::iter(issues.iter())
         .map(|issue_id| {
             let client = &client;
             let state = &state_owned;
             let id = issue_id.clone();
             async move { update_issue_state(client, &id, state).await }
         })
-        .collect();
-
-    let results = join_all(futures).await;
+        .buffer_unordered(10)
+        .collect()
+        .await;
     print_summary(&results, "state updated", output);
 
     Ok(())
@@ -237,17 +236,16 @@ async fn bulk_assign(user: &str, issues: Vec<String>, output: &OutputOptions) ->
         }
     };
 
-    let futures: Vec<_> = issues
-        .iter()
+    let results: Vec<_> = stream::iter(issues.iter())
         .map(|issue_id| {
             let client = &client;
             let user_id = &user_id;
             let id = issue_id.clone();
             async move { update_issue_assignee(client, &id, Some(user_id)).await }
         })
-        .collect();
-
-    let results = join_all(futures).await;
+        .buffer_unordered(10)
+        .collect()
+        .await;
     print_summary(&results, "assigned", output);
 
     Ok(())
@@ -293,17 +291,16 @@ async fn bulk_label(label: &str, issues: Vec<String>, output: &OutputOptions) ->
         }
     };
 
-    let futures: Vec<_> = issues
-        .iter()
+    let results: Vec<_> = stream::iter(issues.iter())
         .map(|issue_id| {
             let client = &client;
             let label_id = &label_id;
             let id = issue_id.clone();
             async move { add_label_to_issue(client, &id, label_id).await }
         })
-        .collect();
-
-    let results = join_all(futures).await;
+        .buffer_unordered(10)
+        .collect()
+        .await;
     print_summary(&results, "labeled", output);
 
     Ok(())
@@ -328,16 +325,15 @@ async fn bulk_unassign(issues: Vec<String>, output: &OutputOptions) -> Result<()
 
     let client = LinearClient::new()?;
 
-    let futures: Vec<_> = issues
-        .iter()
+    let results: Vec<_> = stream::iter(issues.iter())
         .map(|issue_id| {
             let client = &client;
             let id = issue_id.clone();
             async move { update_issue_assignee(client, &id, None).await }
         })
-        .collect();
-
-    let results = join_all(futures).await;
+        .buffer_unordered(10)
+        .collect()
+        .await;
     print_summary(&results, "unassigned", output);
 
     Ok(())

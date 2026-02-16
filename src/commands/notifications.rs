@@ -287,9 +287,9 @@ async fn mark_all_as_read() -> Result<()> {
         }
     "#;
 
-    // Run mutations in parallel using futures::future::join_all
-    let futures: Vec<_> = unread
-        .iter()
+    // Run mutations with bounded concurrency
+    use futures::stream::{self, StreamExt};
+    let results: Vec<_> = stream::iter(unread.iter())
         .map(|id| {
             let client = client.clone();
             let id = id.to_string();
@@ -300,9 +300,9 @@ async fn mark_all_as_read() -> Result<()> {
                     .is_ok()
             }
         })
-        .collect();
-
-    let results = futures::future::join_all(futures).await;
+        .buffer_unordered(10)
+        .collect()
+        .await;
     let success_count = results.iter().filter(|&&r| r).count();
 
     println!(

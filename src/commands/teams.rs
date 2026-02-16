@@ -224,8 +224,8 @@ async fn get_teams(ids: &[String], output: &OutputOptions) -> Result<()> {
 
     let client = LinearClient::new()?;
 
-    let futures: Vec<_> = ids
-        .iter()
+    use futures::stream::{self, StreamExt};
+    let results: Vec<_> = stream::iter(ids.iter())
         .map(|id| {
             let client = client.clone();
             let id = id.clone();
@@ -244,9 +244,9 @@ async fn get_teams(ids: &[String], output: &OutputOptions) -> Result<()> {
                 (id, result)
             }
         })
-        .collect();
-
-    let results = futures::future::join_all(futures).await;
+        .buffer_unordered(10)
+        .collect()
+        .await;
 
     if output.is_json() || output.has_template() {
         let teams: Vec<_> = results
