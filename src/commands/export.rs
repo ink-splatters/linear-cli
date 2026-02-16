@@ -205,8 +205,8 @@ async fn export_csv(
 
     wtr.borrow_mut().flush()?;
 
-    if file.is_some() {
-        eprintln!("Exported {} issues to {}", total, file.unwrap());
+    if let Some(ref path) = file {
+        eprintln!("Exported {} issues to {}", total, path);
     }
 
     Ok(())
@@ -322,8 +322,8 @@ async fn export_markdown(
         writeln!(output)?;
     }
 
-    if file.is_some() {
-        eprintln!("Exported {} issues to {}", issues.len(), file.unwrap());
+    if let Some(ref path) = file {
+        eprintln!("Exported {} issues to {}", issues.len(), path);
     }
 
     Ok(())

@@ -85,7 +85,7 @@ COMMON FLAGS:
     --no-truncate                 Disable table truncation
     --quiet                       Reduce decorative output
     --format TEMPLATE             Template output (e.g. '{{identifier}} {{title}}')
-    --filter field=value          Filter results (repeatable)
+    --filter field=value          Filter results (=, !=, ~= operators; dot paths; case-insensitive)
     --limit N                     Limit list/search results
     --page-size N                 Page size for list/search
     --after CURSOR                Pagination cursor (after)
@@ -166,7 +166,10 @@ struct Cli {
     #[arg(long, global = true)]
     format: Option<String>,
 
-    /// Filter results (field=value, field!=value, field~=value)
+    /// Filter results (field=value, field!=value, field~=value).
+    /// Supports dot-notation for nested fields (e.g. state.name=Done).
+    /// ~= is a case-insensitive "contains" match. All comparisons are case-insensitive.
+    /// Multiple --filter flags are combined with AND logic.
     #[arg(long, global = true)]
     filter: Vec<String>,
 
@@ -341,12 +344,13 @@ enum Commands {
         #[command(subcommand)]
         action: comments::CommentCommands,
     },
-    /// Manage documents - create and organize documentation
+    /// Manage documents - create, update, delete documentation
     #[command(alias = "d")]
     #[command(after_help = r#"EXAMPLES:
     linear documents list                   # List all documents
     linear d get DOC_ID                     # View document
-    linear d create "Design Doc" -p PROJ_ID # Create document"#)]
+    linear d create "Design Doc" -p PROJ_ID # Create document
+    linear d delete DOC_ID --force          # Delete document"#)]
     Documents {
         #[command(subcommand)]
         action: documents::DocumentCommands,
@@ -482,20 +486,24 @@ Detects issue ID from branch names like:
         #[command(subcommand)]
         action: favorites::FavoriteCommands,
     },
-    /// Manage roadmaps - view roadmap planning
+    /// Manage roadmaps - view and manage roadmap planning
     #[command(alias = "rm")]
     #[command(after_help = r#"EXAMPLES:
     linear roadmaps list                    # List all roadmaps
-    linear rm get ROADMAP_ID                # View roadmap details"#)]
+    linear rm get ROADMAP_ID                # View roadmap details
+    linear rm create "Q1 Plan"              # Create a roadmap
+    linear rm update ID -n "Q2 Plan"        # Update roadmap name"#)]
     Roadmaps {
         #[command(subcommand)]
         action: roadmaps::RoadmapCommands,
     },
-    /// Manage initiatives - high-level tracking
+    /// Manage initiatives - create, update, and track initiatives
     #[command(alias = "init")]
     #[command(after_help = r#"EXAMPLES:
     linear initiatives list                 # List all initiatives
-    linear init get INITIATIVE_ID           # View initiative details"#)]
+    linear init get INITIATIVE_ID           # View initiative details
+    linear init create "H1 Goals"           # Create an initiative
+    linear init update ID -s "Active"       # Update initiative status"#)]
     Initiatives {
         #[command(subcommand)]
         action: initiatives::InitiativeCommands,
@@ -539,16 +547,15 @@ Detects issue ID from branch names like:
         #[command(subcommand)]
         action: history::HistoryCommands,
     },
-    /// Watch for issue updates (polling)
+    /// Watch for updates (polling)
     #[command(after_help = r#"EXAMPLES:
-    linear watch LIN-123                    # Watch single issue
-    linear watch LIN-123 --interval 30      # Poll every 30 seconds"#)]
+    linear watch issue LIN-123             # Watch single issue
+    linear watch issue LIN-123 --interval 30  # Poll every 30 seconds
+    linear watch project PROJECT_ID        # Watch a project
+    linear watch team ENG                  # Watch a team"#)]
     Watch {
-        /// Issue identifier to watch
-        id: String,
-        /// Polling interval in seconds
-        #[arg(short, long, default_value = "10")]
-        interval: u64,
+        #[command(subcommand)]
+        action: WatchCommands,
     },
     /// Manage issue relationships - parent/child, blocking, related
     #[command(alias = "rel")]
@@ -642,6 +649,34 @@ enum ConfigCommands {
     WorkspaceRemove {
         /// Workspace name to remove
         name: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum WatchCommands {
+    /// Watch an issue for updates
+    Issue {
+        /// Issue identifier to watch
+        id: String,
+        /// Polling interval in seconds
+        #[arg(short, long, default_value = "10")]
+        interval: u64,
+    },
+    /// Watch a project for updates
+    Project {
+        /// Project ID to watch
+        id: String,
+        /// Polling interval in seconds
+        #[arg(short, long, default_value = "10")]
+        interval: u64,
+    },
+    /// Watch a team for updates
+    Team {
+        /// Team key or ID to watch
+        team: String,
+        /// Polling interval in seconds
+        #[arg(short, long, default_value = "10")]
+        interval: u64,
     },
 }
 
@@ -860,7 +895,17 @@ async fn run_command(
         Commands::Metrics { action } => metrics::handle(action, output).await?,
         Commands::Export { action } => export::handle(action, output).await?,
         Commands::History { action } => history::handle(action, output).await?,
-        Commands::Watch { id, interval } => watch::watch_issue(&id, interval, output).await?,
+        Commands::Watch { action } => match action {
+            WatchCommands::Issue { id, interval } => {
+                watch::watch_issue(&id, interval, output).await?
+            }
+            WatchCommands::Project { id, interval } => {
+                watch::watch_project(&id, interval, output).await?
+            }
+            WatchCommands::Team { team, interval } => {
+                watch::watch_team(&team, interval, output).await?
+            }
+        },
         Commands::Relations { action } => relations::handle(action, output).await?,
         Commands::Auth { action } => auth::handle(action, output).await?,
         Commands::Doctor { check_api } => doctor::run(output, check_api).await?,
@@ -926,7 +971,8 @@ async fn handle_context(
     };
 
     // Extract issue ID from branch name using regex
-    let re = regex::Regex::new(r"(?i)([a-z]+-\d+)").unwrap();
+    static ISSUE_RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = ISSUE_RE.get_or_init(|| regex::Regex::new(r"(?i)([a-z]+-\d+)").unwrap());
 
     let issue_id = re
         .find(&branch)
