@@ -2,22 +2,65 @@ use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    General,     // exit code 1
+    NotFound,    // exit code 2
+    Auth,        // exit code 3
+    RateLimited, // exit code 4
+}
+
+impl ErrorKind {
+    pub fn exit_code(self) -> u8 {
+        match self {
+            ErrorKind::General => 1,
+            ErrorKind::NotFound => 2,
+            ErrorKind::Auth => 3,
+            ErrorKind::RateLimited => 4,
+        }
+    }
+
+    pub fn is_retryable(self) -> bool {
+        matches!(self, ErrorKind::RateLimited)
+    }
+}
+
 #[derive(Debug)]
 pub struct CliError {
-    pub code: u8,
+    pub kind: ErrorKind,
     pub message: String,
     pub details: Option<Value>,
     pub retry_after: Option<u64>,
 }
 
 impl CliError {
-    pub fn new(code: u8, message: impl Into<String>) -> Self {
+    pub fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
         Self {
-            code,
+            kind,
             message: message.into(),
             details: None,
             retry_after: None,
         }
+    }
+
+    pub fn general(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::General, message)
+    }
+
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::NotFound, message)
+    }
+
+    pub fn auth(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::Auth, message)
+    }
+
+    pub fn rate_limited(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::RateLimited, message)
+    }
+
+    pub fn code(&self) -> u8 {
+        self.kind.exit_code()
     }
 
     pub fn with_details(mut self, details: Value) -> Self {
@@ -74,7 +117,7 @@ mod tests {
 
     #[test]
     fn test_display_without_details() {
-        let err = CliError::new(1, "Simple error");
+        let err = CliError::general("Simple error");
         assert_eq!(err.to_string(), "Simple error");
     }
 
@@ -84,7 +127,7 @@ mod tests {
             {"message": "Field 'foo' not found"},
             {"message": "Invalid query syntax"}
         ]);
-        let err = CliError::new(1, "GraphQL error").with_details(errors);
+        let err = CliError::general("GraphQL error").with_details(errors);
         assert_eq!(
             err.to_string(),
             "GraphQL error: Field 'foo' not found; Invalid query syntax"
@@ -94,14 +137,14 @@ mod tests {
     #[test]
     fn test_display_with_single_graphql_error() {
         let errors = json!([{"message": "Entity not found"}]);
-        let err = CliError::new(1, "GraphQL error").with_details(errors);
+        let err = CliError::general("GraphQL error").with_details(errors);
         assert_eq!(err.to_string(), "GraphQL error: Entity not found");
     }
 
     #[test]
     fn test_display_with_object_message() {
         let details = json!({"message": "Rate limit exceeded", "code": 429});
-        let err = CliError::new(4, "API error").with_details(details);
+        let err = CliError::rate_limited("API error").with_details(details);
         assert_eq!(err.to_string(), "API error: Rate limit exceeded");
     }
 
@@ -113,7 +156,7 @@ mod tests {
                 {"message": "Insufficient scope"}
             ]
         });
-        let err = CliError::new(3, "Auth error").with_details(details);
+        let err = CliError::auth("Auth error").with_details(details);
         assert_eq!(
             err.to_string(),
             "Auth error: Permission denied; Insufficient scope"
@@ -123,14 +166,37 @@ mod tests {
     #[test]
     fn test_display_with_empty_errors_array() {
         let errors = json!([]);
-        let err = CliError::new(1, "GraphQL error").with_details(errors);
+        let err = CliError::general("GraphQL error").with_details(errors);
         assert_eq!(err.to_string(), "GraphQL error");
     }
 
     #[test]
     fn test_display_with_errors_missing_message() {
         let errors = json!([{"code": 123}, {"extensions": {}}]);
-        let err = CliError::new(1, "GraphQL error").with_details(errors);
+        let err = CliError::general("GraphQL error").with_details(errors);
         assert_eq!(err.to_string(), "GraphQL error");
+    }
+
+    #[test]
+    fn test_error_kind_exit_codes() {
+        assert_eq!(ErrorKind::General.exit_code(), 1);
+        assert_eq!(ErrorKind::NotFound.exit_code(), 2);
+        assert_eq!(ErrorKind::Auth.exit_code(), 3);
+        assert_eq!(ErrorKind::RateLimited.exit_code(), 4);
+    }
+
+    #[test]
+    fn test_error_kind_retryable() {
+        assert!(!ErrorKind::General.is_retryable());
+        assert!(!ErrorKind::NotFound.is_retryable());
+        assert!(!ErrorKind::Auth.is_retryable());
+        assert!(ErrorKind::RateLimited.is_retryable());
+    }
+
+    #[test]
+    fn test_convenience_constructors() {
+        let err = CliError::not_found("Issue not found");
+        assert_eq!(err.code(), 2);
+        assert_eq!(err.kind, ErrorKind::NotFound);
     }
 }

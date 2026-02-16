@@ -141,7 +141,7 @@ pub fn print_json(value: &Value, output: &OutputOptions) -> Result<()> {
     if output.fail_on_empty {
         if let Value::Array(items) = &out {
             if items.is_empty() {
-                return Err(CliError::new(2, "No results found").into());
+                return Err(CliError::not_found("No results found").into());
             }
         }
     }
@@ -268,7 +268,7 @@ pub fn print_template(value: &Value, template: &str) -> Result<()> {
 
 pub fn ensure_non_empty(values: &[Value], output: &OutputOptions) -> Result<()> {
     if output.fail_on_empty && values.is_empty() {
-        return Err(CliError::new(2, "No results found").into());
+        return Err(CliError::not_found("No results found").into());
     }
     Ok(())
 }

@@ -119,12 +119,11 @@ fn http_error(status: StatusCode, headers: &HeaderMap, context: &str) -> CliErro
     });
 
     let err = match status.as_u16() {
-        401 => CliError::new(3, "Authentication failed - check your API key"),
-        403 => CliError::new(3, format!("Access denied - {}", context)),
-        404 => CliError::new(2, format!("{} not found", context)),
-        429 => CliError::new(4, "Rate limit exceeded").with_retry_after(retry_after),
-        _ => CliError::new(
-            1,
+        401 => CliError::auth("Authentication failed - check your API key"),
+        403 => CliError::auth(format!("Access denied - {}", context)),
+        404 => CliError::not_found(format!("{} not found", context)),
+        429 => CliError::rate_limited("Rate limit exceeded").with_retry_after(retry_after),
+        _ => CliError::general(
             format!(
                 "HTTP {} {}",
                 status.as_u16(),
@@ -402,7 +401,7 @@ impl LinearClient {
         let result: Value = response.json().await?;
 
         if let Some(errors) = result.get("errors") {
-            return Err(CliError::new(1, "GraphQL error")
+            return Err(CliError::general("GraphQL error")
                 .with_details(errors.clone())
                 .into());
         }

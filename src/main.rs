@@ -725,7 +725,7 @@ async fn main() -> Result<()> {
                     let error_json = serde_json::json!({
                         "error": true,
                         "message": cli_error.message,
-                        "code": cli_error.code,
+                        "code": cli_error.code(),
                         "details": cli_error.details,
                         "retry_after": cli_error.retry_after,
                     });
@@ -760,7 +760,7 @@ async fn main() -> Result<()> {
 /// Categorize error for exit codes: 1=general error, 2=not found, 3=auth error
 fn categorize_error(e: &anyhow::Error) -> u8 {
     if let Some(cli_error) = e.downcast_ref::<CliError>() {
-        return cli_error.code;
+        return cli_error.code();
     }
     let msg = e.to_string().to_lowercase();
     if msg.contains("not found") || msg.contains("does not exist") {

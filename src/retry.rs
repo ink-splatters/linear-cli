@@ -104,14 +104,14 @@ pub trait IsRetryable {
 
 impl IsRetryable for CliError {
     fn is_retryable(&self) -> bool {
-        let msg = self.message.to_lowercase();
-        self.code == 4
-            || msg.contains("rate limit")
-            || msg.contains("timeout")
-            || msg.contains("temporarily unavailable")
-            || msg.contains("503")
-            || msg.contains("502")
-            || msg.contains("504")
+        self.kind.is_retryable() || {
+            let msg = self.message.to_lowercase();
+            msg.contains("timeout")
+                || msg.contains("temporarily unavailable")
+                || msg.contains("503")
+                || msg.contains("502")
+                || msg.contains("504")
+        }
     }
 
     fn retry_after(&self) -> Option<u64> {
@@ -211,28 +211,28 @@ mod tests {
 
     #[test]
     fn test_cli_error_retryable() {
-        let rate_limit = CliError::new(4, "Rate limit exceeded");
+        let rate_limit = CliError::rate_limited("Rate limit exceeded");
         assert!(rate_limit.is_retryable());
 
-        let timeout = CliError::new(1, "Request timeout");
+        let timeout = CliError::general("Request timeout");
         assert!(timeout.is_retryable());
 
-        let server_error = CliError::new(1, "503 Service Unavailable");
+        let server_error = CliError::general("503 Service Unavailable");
         assert!(server_error.is_retryable());
 
-        let auth_error = CliError::new(3, "Authentication failed");
+        let auth_error = CliError::auth("Authentication failed");
         assert!(!auth_error.is_retryable());
 
-        let not_found = CliError::new(2, "Issue not found");
+        let not_found = CliError::not_found("Issue not found");
         assert!(!not_found.is_retryable());
     }
 
     #[test]
     fn test_cli_error_retry_after() {
-        let err = CliError::new(4, "Rate limited").with_retry_after(Some(30));
+        let err = CliError::rate_limited("Rate limited").with_retry_after(Some(30));
         assert_eq!(err.retry_after(), Some(30));
 
-        let err_no_retry = CliError::new(1, "Error");
+        let err_no_retry = CliError::general("Error");
         assert_eq!(err_no_retry.retry_after(), None);
     }
 }
