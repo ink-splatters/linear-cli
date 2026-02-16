@@ -62,7 +62,7 @@ pub struct AgentOptions {
 }
 
 #[derive(Parser)]
-#[command(name = "linear")]
+#[command(name = "linear-cli")]
 #[command(
     about = "A powerful CLI for Linear.app - manage issues, projects, and more from your terminal"
 )]
