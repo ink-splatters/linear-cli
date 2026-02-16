@@ -4,10 +4,10 @@ use colored::Colorize;
 use futures::stream::{self, StreamExt};
 use serde_json::json;
 
-use crate::api::{resolve_label_id, resolve_user_id, LinearClient};
+use crate::api::{resolve_label_id, resolve_state_id, resolve_user_id, LinearClient};
 use crate::display_options;
 use crate::output::{print_json, OutputOptions};
-use crate::text::{is_uuid, truncate};
+use crate::text::truncate;
 
 #[derive(Subcommand)]
 pub enum BulkCommands {
@@ -64,47 +64,6 @@ struct BulkResult {
     error: Option<String>,
 }
 
-/// Resolve a state name to a UUID for a given team.
-async fn resolve_state_id(client: &LinearClient, team_id: &str, state: &str) -> Result<String> {
-    // If already a UUID, return as-is
-    if is_uuid(state) {
-        return Ok(state.to_string());
-    }
-
-    // Fetch team states
-    let query = r#"
-        query($teamId: String!) {
-            team(id: $teamId) {
-                states {
-                    nodes {
-                        id
-                        name
-                    }
-                }
-            }
-        }
-    "#;
-
-    let result = client
-        .query(query, Some(json!({ "teamId": team_id })))
-        .await?;
-    let empty = vec![];
-    let states = result["data"]["team"]["states"]["nodes"]
-        .as_array()
-        .unwrap_or(&empty);
-
-    // Try to match by name (case-insensitive)
-    for s in states {
-        let name = s["name"].as_str().unwrap_or("");
-        if name.eq_ignore_ascii_case(state) {
-            if let Some(id) = s["id"].as_str() {
-                return Ok(id.to_string());
-            }
-        }
-    }
-
-    anyhow::bail!("State '{}' not found for team", state)
-}
 
 /// Get issue details including UUID and team ID from identifier (e.g., "LIN-123")
 async fn get_issue_info(

@@ -299,6 +299,50 @@ pub async fn resolve_project_id(
     resolve_id(client, project, cache_opts, &config, find_project_id).await
 }
 
+/// Resolve a state name to a UUID for a given team.
+/// States are team-scoped in Linear, so the team_id must be provided.
+pub async fn resolve_state_id(
+    client: &LinearClient,
+    team_id: &str,
+    state: &str,
+) -> Result<String> {
+    if is_uuid(state) {
+        return Ok(state.to_string());
+    }
+
+    let query = r#"
+        query($teamId: String!) {
+            team(id: $teamId) {
+                states {
+                    nodes {
+                        id
+                        name
+                    }
+                }
+            }
+        }
+    "#;
+
+    let result = client
+        .query(query, Some(json!({ "teamId": team_id })))
+        .await?;
+    let empty = vec![];
+    let states = result["data"]["team"]["states"]["nodes"]
+        .as_array()
+        .unwrap_or(&empty);
+
+    for s in states {
+        let name = s["name"].as_str().unwrap_or("");
+        if name.eq_ignore_ascii_case(state) {
+            if let Some(id) = s["id"].as_str() {
+                return Ok(id.to_string());
+            }
+        }
+    }
+
+    anyhow::bail!("State '{}' not found for team", state)
+}
+
 fn find_team_id(teams: &[Value], team: &str) -> Option<String> {
     if let Some(team_data) = teams
         .iter()

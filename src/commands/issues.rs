@@ -5,7 +5,7 @@ use serde_json::{json, Map, Value};
 use std::io::{self, BufRead};
 use tabled::{Table, Tabled};
 
-use crate::api::{resolve_label_id, resolve_team_id, resolve_user_id, LinearClient};
+use crate::api::{resolve_label_id, resolve_state_id, resolve_team_id, resolve_user_id, LinearClient};
 use crate::display_options;
 use crate::input::read_ids_from_stdin;
 use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
@@ -733,7 +733,12 @@ async fn create_issue(
         input["priority"] = json!(p);
     }
     if let Some(ref s) = state {
-        input["stateId"] = json!(s);
+        if dry_run {
+            input["stateId"] = json!(s);
+        } else {
+            let state_id = resolve_state_id(&client, &team_id, s).await?;
+            input["stateId"] = json!(state_id);
+        }
     }
     if let Some(ref a) = assignee {
         // Resolve user name/email to UUID (skip during dry-run to avoid API calls)
@@ -931,7 +936,24 @@ async fn update_issue(
         input["priority"] = json!(p);
     }
     if let Some(s) = state {
-        input["stateId"] = json!(s);
+        if dry_run {
+            input["stateId"] = json!(s);
+        } else {
+            // Fetch the issue's team ID to resolve state name
+            let team_query = r#"
+                query($id: String!) {
+                    issue(id: $id) {
+                        team { id }
+                    }
+                }
+            "#;
+            let team_result = client.query(team_query, Some(json!({ "id": id }))).await?;
+            let issue_team_id = team_result["data"]["issue"]["team"]["id"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("Could not determine team for issue {}", id))?;
+            let state_id = resolve_state_id(&client, issue_team_id, &s).await?;
+            input["stateId"] = json!(state_id);
+        }
     }
     if let Some(a) = assignee {
         // Resolve user name/email to UUID (skip during dry-run to avoid API calls)
