@@ -419,3 +419,98 @@ fn test_context_alias() {
     assert_eq!(code2, 0);
     assert_eq!(stdout1, stdout2);
 }
+
+// --- v0.3.4 new subcommand tests ---
+
+#[test]
+fn test_watch_help() {
+    let (code, stdout, _stderr) = run_cli(&["watch", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("issue"));
+    assert!(stdout.contains("project"));
+    assert!(stdout.contains("team"));
+}
+
+#[test]
+fn test_watch_issue_help() {
+    let (code, stdout, _stderr) = run_cli(&["watch", "issue", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--interval"));
+}
+
+#[test]
+fn test_watch_project_help() {
+    let (code, stdout, _stderr) = run_cli(&["watch", "project", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--interval"));
+}
+
+#[test]
+fn test_watch_team_help() {
+    let (code, stdout, _stderr) = run_cli(&["watch", "team", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--interval"));
+}
+
+#[test]
+fn test_roadmaps_create_help() {
+    let (code, stdout, _stderr) = run_cli(&["roadmaps", "create", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--description"));
+}
+
+#[test]
+fn test_roadmaps_update_help() {
+    let (code, stdout, _stderr) = run_cli(&["roadmaps", "update", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--name"));
+    assert!(stdout.contains("--dry-run"));
+}
+
+#[test]
+fn test_initiatives_create_help() {
+    let (code, stdout, _stderr) = run_cli(&["initiatives", "create", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--description"));
+    assert!(stdout.contains("--status"));
+}
+
+#[test]
+fn test_initiatives_update_help() {
+    let (code, stdout, _stderr) = run_cli(&["initiatives", "update", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--name"));
+    assert!(stdout.contains("--status"));
+    assert!(stdout.contains("--dry-run"));
+}
+
+#[test]
+fn test_documents_delete_help() {
+    let (code, stdout, _stderr) = run_cli(&["documents", "delete", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--force"));
+    assert!(stdout.contains("--dry-run"));
+}
+
+#[test]
+fn test_roadmaps_help_includes_create() {
+    let (code, stdout, _stderr) = run_cli(&["roadmaps", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("create"));
+    assert!(stdout.contains("update"));
+}
+
+#[test]
+fn test_initiatives_help_includes_create() {
+    let (code, stdout, _stderr) = run_cli(&["initiatives", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("create"));
+    assert!(stdout.contains("update"));
+}
+
+#[test]
+fn test_documents_help_includes_delete() {
+    let (code, stdout, _stderr) = run_cli(&["documents", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("delete"));
+}
