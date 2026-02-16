@@ -10,7 +10,9 @@ use std::path::PathBuf;
 use tabled::{Table, Tabled};
 
 use crate::display_options;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json_owned, sort_values, OutputOptions,
+};
 use crate::priority::priority_to_string;
 use crate::text::truncate;
 /// Issue template structure for creating issues with predefined values
@@ -150,7 +152,7 @@ fn list_templates(output: &OutputOptions) -> Result<()> {
     }
 
     if output.is_json() || output.has_template() {
-        print_json(&serde_json::json!(templates), output)?;
+        print_json_owned(serde_json::json!(templates), output)?;
         return Ok(());
     }
 
@@ -274,7 +276,7 @@ fn create_template(name: &str, output: &OutputOptions) -> Result<()> {
     save_templates(&store)?;
 
     if output.is_json() || output.has_template() {
-        print_json(&json!(store.templates.get(name)), output)?;
+        print_json_owned(json!(store.templates.get(name)), output)?;
         return Ok(());
     }
 
@@ -292,7 +294,7 @@ fn show_template(name: &str, output: &OutputOptions) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Template not found"))?;
 
     if output.is_json() || output.has_template() {
-        print_json(&json!(template), output)?;
+        print_json_owned(json!(template), output)?;
         return Ok(());
     }
 
@@ -346,7 +348,7 @@ fn delete_template(name: &str, force: bool, output: &OutputOptions) -> Result<()
     save_templates(&store)?;
 
     if output.is_json() || output.has_template() {
-        print_json(&json!({ "deleted": name }), output)?;
+        print_json_owned(json!({ "deleted": name }), output)?;
         return Ok(());
     }
 

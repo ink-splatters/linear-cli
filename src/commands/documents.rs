@@ -7,7 +7,9 @@ use tabled::{Table, Tabled};
 use crate::api::LinearClient;
 use crate::display_options;
 use crate::input::read_ids_from_stdin;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
 use crate::types::Document;
@@ -174,7 +176,7 @@ async fn list_documents(
     };
 
     if output.is_json() || output.has_template() {
-        print_json(&serde_json::json!(filtered_docs), output)?;
+        print_json_owned(serde_json::json!(filtered_docs), output)?;
         return Ok(());
     }
 
@@ -322,7 +324,7 @@ async fn get_documents(ids: &[String], output: &OutputOptions) -> Result<()> {
                 docs.push(document.clone());
             }
         }
-        print_json(&serde_json::json!(docs), output)?;
+        print_json_owned(serde_json::json!(docs), output)?;
         return Ok(());
     }
 
@@ -431,8 +433,8 @@ async fn update_document(
 
     if dry_run {
         if output.is_json() || output.has_template() {
-            print_json(
-                &json!({
+            print_json_owned(
+                json!({
                     "dry_run": true,
                     "would_update": {
                         "id": id,

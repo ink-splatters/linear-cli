@@ -4,7 +4,7 @@ use serde_json::json;
 use crate::api::LinearClient;
 use crate::cache;
 use crate::config;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json_owned, OutputOptions};
 
 pub async fn run(output: &OutputOptions, check_api: bool) -> Result<()> {
     let config_path = config::config_file_path()?;
@@ -37,8 +37,8 @@ pub async fn run(output: &OutputOptions, check_api: bool) -> Result<()> {
     }
 
     if output.is_json() || output.has_template() {
-        print_json(
-            &json!({
+        print_json_owned(
+            json!({
                 "config_path": config_path.to_string_lossy(),
                 "profile": profile,
                 "configured": configured,

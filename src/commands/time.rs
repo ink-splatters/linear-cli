@@ -6,7 +6,9 @@ use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
 use crate::display_options;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
 
@@ -285,7 +287,7 @@ async fn list_time_entries(issue_filter: Option<String>, output: &OutputOptions)
     match entries {
         Ok(mut entries) => {
             if output.is_json() || output.has_template() {
-                print_json(&serde_json::Value::Array(entries.clone()), output)?;
+                print_json_owned(serde_json::Value::Array(entries.clone()), output)?;
                 return Ok(());
             }
 

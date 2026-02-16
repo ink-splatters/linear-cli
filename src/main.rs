@@ -26,7 +26,7 @@ use commands::{
     statuses, sync, teams, templates, time, triage, uploads, users, watch,
 };
 use error::CliError;
-use output::print_json;
+use output::print_json_owned;
 use output::{parse_filters, JsonOutputOptions, OutputOptions, SortOrder};
 use pagination::PaginationOptions;
 use std::sync::OnceLock;
@@ -935,7 +935,7 @@ async fn handle_context(
 
     if output.is_json() || output.has_template() {
         if agent_opts.id_only {
-            print_json(&serde_json::json!(issue_id), output)?;
+            print_json_owned(serde_json::json!(issue_id), output)?;
             return Ok(());
         }
         // Fetch issue details for JSON output
@@ -962,8 +962,8 @@ async fn handle_context(
             Ok(data) => {
                 let issue = &data["data"]["issue"];
                 if issue.is_null() {
-                    print_json(
-                        &serde_json::json!({
+                    print_json_owned(
+                        serde_json::json!({
                             "branch": branch,
                             "issue_id": issue_id,
                             "found": false,
@@ -971,8 +971,8 @@ async fn handle_context(
                         output,
                     )?;
                 } else {
-                    print_json(
-                        &serde_json::json!({
+                    print_json_owned(
+                        serde_json::json!({
                             "branch": branch,
                             "issue_id": issue_id,
                             "found": true,
@@ -983,8 +983,8 @@ async fn handle_context(
                 }
             }
             Err(_) => {
-                print_json(
-                    &serde_json::json!({
+                print_json_owned(
+                    serde_json::json!({
                         "branch": branch,
                         "issue_id": issue_id,
                         "found": false,

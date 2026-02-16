@@ -5,7 +5,7 @@ use serde_json::json;
 
 use crate::api::LinearClient;
 use crate::config;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json_owned, OutputOptions};
 
 #[derive(Subcommand)]
 pub enum AuthCommands {
@@ -81,8 +81,8 @@ async fn login(
         crate::keyring::set_key(&profile, &key)?;
 
         if output.is_json() || output.has_template() {
-            print_json(
-                &json!({
+            print_json_owned(
+                json!({
                     "profile": profile,
                     "saved": true,
                     "storage": "keyring"
@@ -104,8 +104,8 @@ async fn login(
     config::set_workspace_key(&profile, &key)?;
 
     if output.is_json() || output.has_template() {
-        print_json(
-            &json!({
+        print_json_owned(
+            json!({
                 "profile": profile,
                 "saved": true,
                 "storage": "config"
@@ -144,8 +144,8 @@ async fn logout(force: bool, output: &OutputOptions) -> Result<()> {
     config::workspace_remove(&profile)?;
 
     if output.is_json() || output.has_template() {
-        print_json(
-            &json!({
+        print_json_owned(
+            json!({
                 "profile": profile,
                 "removed": true
             }),
@@ -211,8 +211,8 @@ async fn status(validate: bool, output: &OutputOptions) -> Result<()> {
     }
 
     if output.is_json() || output.has_template() {
-        print_json(
-            &json!({
+        print_json_owned(
+            json!({
                 "profile": profile,
                 "configured": configured,
                 "keyring_configured": keyring_configured,
@@ -286,8 +286,8 @@ async fn migrate(keep_config: bool, force: bool, output: &OutputOptions) -> Resu
 
     if config_data.workspaces.is_empty() {
         if output.is_json() || output.has_template() {
-            print_json(
-                &json!({ "migrated": 0, "message": "No workspaces to migrate" }),
+            print_json_owned(
+                json!({ "migrated": 0, "message": "No workspaces to migrate" }),
                 output,
             )?;
             return Ok(());
@@ -347,8 +347,8 @@ async fn migrate(keep_config: bool, force: bool, output: &OutputOptions) -> Resu
     }
 
     if output.is_json() || output.has_template() {
-        print_json(
-            &json!({
+        print_json_owned(
+            json!({
                 "migrated": migrated,
                 "failed": failed,
                 "config_cleared": !keep_config && failed.is_empty()

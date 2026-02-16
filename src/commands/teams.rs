@@ -8,7 +8,9 @@ use crate::api::{resolve_team_id, LinearClient};
 use crate::cache::{Cache, CacheType};
 use crate::display_options;
 use crate::input::read_ids_from_stdin;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
 use crate::types::Team;
@@ -57,7 +59,7 @@ async fn list_teams(output: &OutputOptions) -> Result<()> {
         && output.pagination.limit.is_none();
 
     let cached: Vec<Value> = if can_use_cache {
-        let cache = Cache::new()?;
+        let cache = Cache::with_ttl(output.cache.effective_ttl_seconds())?;
         cache
             .get(CacheType::Teams)
             .and_then(|data| data.as_array().cloned())
@@ -109,7 +111,7 @@ async fn list_teams(output: &OutputOptions) -> Result<()> {
     };
 
     if output.is_json() || output.has_template() {
-        print_json(&serde_json::json!(teams), output)?;
+        print_json_owned(serde_json::json!(teams), output)?;
         return Ok(());
     }
 
@@ -274,7 +276,7 @@ async fn get_teams(ids: &[String], output: &OutputOptions) -> Result<()> {
                 })
             })
             .collect();
-        print_json(&serde_json::json!(teams), output)?;
+        print_json_owned(serde_json::json!(teams), output)?;
         return Ok(());
     }
 

@@ -4,7 +4,7 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json_owned, OutputOptions};
 use crate::text::truncate;
 use crate::DISPLAY_OPTIONS;
 
@@ -86,8 +86,8 @@ async fn issue_history(id: &str, limit: usize, output: &OutputOptions) -> Result
         .unwrap_or_default();
 
     if output.is_json() {
-        print_json(
-            &json!({
+        print_json_owned(
+            json!({
                 "issue": {
                     "id": issue["id"],
                     "identifier": issue["identifier"],

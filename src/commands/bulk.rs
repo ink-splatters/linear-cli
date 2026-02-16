@@ -1,12 +1,16 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
 use futures::stream::{self, StreamExt};
 use serde_json::json;
+use tokio::sync::Mutex;
 
 use crate::api::{resolve_label_id, resolve_state_id, resolve_user_id, LinearClient};
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json_owned, OutputOptions};
 use crate::text::truncate;
 
 #[derive(Subcommand)]
@@ -117,8 +121,8 @@ pub async fn handle(cmd: BulkCommands, output: &OutputOptions) -> Result<()> {
 async fn bulk_update_state(state: &str, issues: Vec<String>, output: &OutputOptions) -> Result<()> {
     if issues.is_empty() {
         if output.is_json() || output.has_template() {
-            print_json(
-                &json!({ "error": "No issues specified", "results": [] }),
+            print_json_owned(
+                json!({ "error": "No issues specified", "results": [] }),
                 output,
             )?;
         } else {
@@ -138,13 +142,15 @@ async fn bulk_update_state(state: &str, issues: Vec<String>, output: &OutputOpti
 
     let client = LinearClient::new()?;
     let state_owned = state.to_string();
+    let state_cache: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let results: Vec<_> = stream::iter(issues.iter())
         .map(|issue_id| {
             let client = &client;
             let state = &state_owned;
+            let cache = Arc::clone(&state_cache);
             let id = issue_id.clone();
-            async move { update_issue_state(client, &id, state).await }
+            async move { update_issue_state(client, &id, state, &cache).await }
         })
         .buffer_unordered(10)
         .collect()
@@ -157,8 +163,8 @@ async fn bulk_update_state(state: &str, issues: Vec<String>, output: &OutputOpti
 async fn bulk_assign(user: &str, issues: Vec<String>, output: &OutputOptions) -> Result<()> {
     if issues.is_empty() {
         if output.is_json() || output.has_template() {
-            print_json(
-                &json!({ "error": "No issues specified", "results": [] }),
+            print_json_owned(
+                json!({ "error": "No issues specified", "results": [] }),
                 output,
             )?;
         } else {
@@ -183,8 +189,8 @@ async fn bulk_assign(user: &str, issues: Vec<String>, output: &OutputOptions) ->
         Ok(id) => id,
         Err(e) => {
             if output.is_json() || output.has_template() {
-                print_json(
-                    &json!({ "error": format!("Failed to resolve user '{}': {}", user, e), "results": [] }),
+                print_json_owned(
+                    json!({ "error": format!("Failed to resolve user '{}': {}", user, e), "results": [] }),
                     output,
                 )?;
             } else {
@@ -212,8 +218,8 @@ async fn bulk_assign(user: &str, issues: Vec<String>, output: &OutputOptions) ->
 async fn bulk_label(label: &str, issues: Vec<String>, output: &OutputOptions) -> Result<()> {
     if issues.is_empty() {
         if output.is_json() || output.has_template() {
-            print_json(
-                &json!({ "error": "No issues specified", "results": [] }),
+            print_json_owned(
+                json!({ "error": "No issues specified", "results": [] }),
                 output,
             )?;
         } else {
@@ -238,8 +244,8 @@ async fn bulk_label(label: &str, issues: Vec<String>, output: &OutputOptions) ->
         Ok(id) => id,
         Err(e) => {
             if output.is_json() || output.has_template() {
-                print_json(
-                    &json!({ "error": format!("Failed to resolve label '{}': {}", label, e), "results": [] }),
+                print_json_owned(
+                    json!({ "error": format!("Failed to resolve label '{}': {}", label, e), "results": [] }),
                     output,
                 )?;
             } else {
@@ -267,8 +273,8 @@ async fn bulk_label(label: &str, issues: Vec<String>, output: &OutputOptions) ->
 async fn bulk_unassign(issues: Vec<String>, output: &OutputOptions) -> Result<()> {
     if issues.is_empty() {
         if output.is_json() || output.has_template() {
-            print_json(
-                &json!({ "error": "No issues specified", "results": [] }),
+            print_json_owned(
+                json!({ "error": "No issues specified", "results": [] }),
                 output,
             )?;
         } else {
@@ -297,7 +303,12 @@ async fn bulk_unassign(issues: Vec<String>, output: &OutputOptions) -> Result<()
     Ok(())
 }
 
-async fn update_issue_state(client: &LinearClient, issue_id: &str, state: &str) -> BulkResult {
+async fn update_issue_state(
+    client: &LinearClient,
+    issue_id: &str,
+    state: &str,
+    state_cache: &Arc<Mutex<HashMap<String, String>>>,
+) -> BulkResult {
     // First, get issue UUID and team ID
     let (uuid, team_id, identifier) = match get_issue_info(client, issue_id).await {
         Ok(info) => info,
@@ -311,16 +322,32 @@ async fn update_issue_state(client: &LinearClient, issue_id: &str, state: &str) 
         }
     };
 
-    // Resolve state name to UUID for this team
-    let state_id = match resolve_state_id(client, &team_id, state).await {
-        Ok(id) => id,
-        Err(e) => {
-            return BulkResult {
-                issue_id: issue_id.to_string(),
-                success: false,
-                identifier,
-                error: Some(e.to_string()),
-            };
+    // Check cache for resolved state ID for this team
+    let cache_key = format!("{}:{}", team_id, state);
+    let cached = {
+        let cache = state_cache.lock().await;
+        cache.get(&cache_key).cloned()
+    };
+
+    let state_id = match cached {
+        Some(id) => id,
+        None => {
+            // Resolve state name to UUID for this team
+            match resolve_state_id(client, &team_id, state).await {
+                Ok(id) => {
+                    let mut cache = state_cache.lock().await;
+                    cache.insert(cache_key, id.clone());
+                    id
+                }
+                Err(e) => {
+                    return BulkResult {
+                        issue_id: issue_id.to_string(),
+                        success: false,
+                        identifier,
+                        error: Some(e.to_string()),
+                    };
+                }
+            }
         }
     };
 
@@ -579,7 +606,7 @@ fn print_summary(results: &[BulkResult], action: &str, output: &OutputOptions) {
                 "failed": failure_count,
             }
         });
-        if let Err(err) = print_json(&payload, output) {
+        if let Err(err) = print_json_owned(payload, output) {
             eprintln!("Error: {}", err);
         }
         return;

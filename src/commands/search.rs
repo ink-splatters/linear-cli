@@ -5,7 +5,9 @@ use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
 use crate::display_options;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
 
@@ -112,7 +114,7 @@ async fn search_issues(query: &str, include_archived: bool, output: &OutputOptio
     .await?;
 
     if output.is_json() || output.has_template() {
-        print_json(&serde_json::json!(issues), output)?;
+        print_json_owned(serde_json::json!(issues), output)?;
         return Ok(());
     }
 
@@ -205,7 +207,7 @@ async fn search_projects(
     .await?;
 
     if output.is_json() || output.has_template() {
-        print_json(&serde_json::json!(projects), output)?;
+        print_json_owned(serde_json::json!(projects), output)?;
         return Ok(());
     }
 

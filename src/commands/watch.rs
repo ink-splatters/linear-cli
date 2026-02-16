@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 use crate::api::LinearClient;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json_owned, OutputOptions};
 
 /// Watch for changes to an issue and print updates
 pub async fn watch_issue(id: &str, interval_secs: u64, output: &OutputOptions) -> Result<()> {
@@ -45,8 +45,8 @@ pub async fn watch_issue(id: &str, interval_secs: u64, output: &OutputOptions) -
             if iteration > 0 {
                 // Not the first iteration, so this is a change
                 if output.is_json() {
-                    print_json(
-                        &json!({
+                    print_json_owned(
+                        json!({
                             "event": "updated",
                             "issue": issue,
                             "timestamp": chrono::Utc::now().to_rfc3339(),
@@ -63,8 +63,8 @@ pub async fn watch_issue(id: &str, interval_secs: u64, output: &OutputOptions) -
                     );
                 }
             } else if output.is_json() {
-                print_json(
-                    &json!({
+                print_json_owned(
+                    json!({
                         "event": "initial",
                         "issue": issue,
                         "timestamp": chrono::Utc::now().to_rfc3339(),

@@ -7,7 +7,9 @@ use tabled::{Table, Tabled};
 use crate::api::{resolve_team_id, LinearClient};
 use crate::cache::{Cache, CacheType};
 use crate::display_options;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
 use crate::types::{User, Viewer};
@@ -89,7 +91,7 @@ async fn list_users(team: Option<String>, output: &OutputOptions) -> Result<()> 
         .await?
     } else {
         let cached: Vec<Value> = if can_use_cache {
-            let cache = Cache::new()?;
+            let cache = Cache::with_ttl(output.cache.effective_ttl_seconds())?;
             cache
                 .get(CacheType::Users)
                 .and_then(|data| data.as_array().cloned())
@@ -142,7 +144,7 @@ async fn list_users(team: Option<String>, output: &OutputOptions) -> Result<()> 
     };
 
     if output.is_json() || output.has_template() {
-        print_json(&serde_json::json!(users), output)?;
+        print_json_owned(serde_json::json!(users), output)?;
         return Ok(());
     }
 

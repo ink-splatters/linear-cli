@@ -2,14 +2,14 @@ use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
 use serde_json::json;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
 use crate::api::{resolve_team_id, LinearClient};
 use crate::cache::{Cache, CacheType};
 use crate::display_options;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json_owned, OutputOptions};
 use crate::text::truncate;
 
 /// Get default directory to scan for local projects (cross-platform)
@@ -218,27 +218,28 @@ async fn fetch_linear_projects(
 fn compare_projects(local: Vec<LocalProject>, remote: Vec<LinearProject>) -> Vec<SyncStatus> {
     let mut statuses = Vec::new();
 
-    // Create a set of remote project names (case-insensitive)
-    let _remote_names: HashSet<String> = remote.iter().map(|p| p.name.to_lowercase()).collect();
+    // Build a HashMap of remote projects keyed by lowercase name for O(1) lookup
+    let remote_map: HashMap<String, &LinearProject> =
+        remote.iter().map(|p| (p.name.to_lowercase(), p)).collect();
 
-    // Create a map of local names for quick lookup
+    // Create a set of local names for quick lookup
     let local_names: HashSet<String> = local.iter().map(|p| p.name.to_lowercase()).collect();
 
-    // Check local projects
+    // Check local projects against remote map in O(n)
     for local_proj in &local {
         let name_lower = local_proj.name.to_lowercase();
 
-        if let Some(remote_proj) = remote.iter().find(|r| r.name.to_lowercase() == name_lower) {
+        if let Some(remote_proj) = remote_map.get(&name_lower) {
             statuses.push(SyncStatus::Synced {
                 local: local_proj.clone(),
-                remote: remote_proj.clone(),
+                remote: (*remote_proj).clone(),
             });
         } else {
             statuses.push(SyncStatus::LocalOnly(local_proj.clone()));
         }
     }
 
-    // Check for remote-only projects
+    // Check for remote-only projects in O(m) using precomputed local_names
     for remote_proj in &remote {
         let name_lower = remote_proj.name.to_lowercase();
         if !local_names.contains(&name_lower) {
@@ -373,7 +374,7 @@ async fn status_command(
             }
         });
 
-        print_json(&output_json, output)?;
+        print_json_owned(output_json, output)?;
         return Ok(());
     }
 

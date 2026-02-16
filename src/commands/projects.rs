@@ -5,9 +5,12 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::{resolve_project_id, resolve_team_id, LinearClient};
+use crate::cache::{Cache, CacheType};
 use crate::display_options;
 use crate::input::read_ids_from_stdin;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
 use crate::types::Project;
@@ -146,47 +149,76 @@ pub async fn handle(cmd: ProjectCommands, output: &OutputOptions) -> Result<()> 
 }
 
 async fn list_projects(include_archived: bool, output: &OutputOptions) -> Result<()> {
-    let client = LinearClient::new()?;
+    let can_use_cache = !output.cache.no_cache
+        && !include_archived
+        && output.pagination.after.is_none()
+        && output.pagination.before.is_none()
+        && !output.pagination.all
+        && output.pagination.page_size.is_none()
+        && output.pagination.limit.is_none();
 
-    // Simplified query to reduce GraphQL complexity (was exceeding 10000 limit)
-    let query = r#"
-        query($includeArchived: Boolean, $first: Int, $after: String, $last: Int, $before: String) {
-            projects(first: $first, after: $after, last: $last, before: $before, includeArchived: $includeArchived) {
-                nodes {
-                    id
-                    name
-                    state
-                    url
-                    startDate
-                    targetDate
-                }
-                pageInfo {
-                    hasNextPage
-                    endCursor
-                    hasPreviousPage
-                    startCursor
+    let cached: Vec<serde_json::Value> = if can_use_cache {
+        let cache = Cache::with_ttl(output.cache.effective_ttl_seconds())?;
+        cache
+            .get(CacheType::Projects)
+            .and_then(|data| data.as_array().cloned())
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    let mut projects = if !cached.is_empty() {
+        cached
+    } else {
+        let client = LinearClient::new()?;
+
+        // Simplified query to reduce GraphQL complexity (was exceeding 10000 limit)
+        let query = r#"
+            query($includeArchived: Boolean, $first: Int, $after: String, $last: Int, $before: String) {
+                projects(first: $first, after: $after, last: $last, before: $before, includeArchived: $includeArchived) {
+                    nodes {
+                        id
+                        name
+                        state
+                        url
+                        startDate
+                        targetDate
+                    }
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                        hasPreviousPage
+                        startCursor
+                    }
                 }
             }
+        "#;
+
+        let mut vars = serde_json::Map::new();
+        vars.insert("includeArchived".to_string(), json!(include_archived));
+
+        let pagination = output.pagination.with_default_limit(50);
+        let projects = paginate_nodes(
+            &client,
+            query,
+            vars,
+            &["data", "projects", "nodes"],
+            &["data", "projects", "pageInfo"],
+            &pagination,
+            50,
+        )
+        .await?;
+
+        if can_use_cache {
+            let cache = Cache::with_ttl(output.cache.effective_ttl_seconds())?;
+            let _ = cache.set(CacheType::Projects, serde_json::json!(projects.clone()));
         }
-    "#;
 
-    let mut vars = serde_json::Map::new();
-    vars.insert("includeArchived".to_string(), json!(include_archived));
-
-    let pagination = output.pagination.with_default_limit(50);
-    let mut projects = paginate_nodes(
-        &client,
-        query,
-        vars,
-        &["data", "projects", "nodes"],
-        &["data", "projects", "pageInfo"],
-        &pagination,
-        50,
-    )
-    .await?;
+        projects
+    };
 
     if output.is_json() || output.has_template() {
-        print_json(&serde_json::json!(projects), output)?;
+        print_json_owned(serde_json::json!(projects), output)?;
         return Ok(());
     }
 
@@ -344,7 +376,7 @@ async fn get_projects(ids: &[String], output: &OutputOptions) -> Result<()> {
                 })
             })
             .collect();
-        print_json(&serde_json::json!(projects), output)?;
+        print_json_owned(serde_json::json!(projects), output)?;
         return Ok(());
     }
 
@@ -425,6 +457,9 @@ async fn create_project(
         );
         println!("  ID: {}", project["id"].as_str().unwrap_or(""));
         println!("  URL: {}", project["url"].as_str().unwrap_or(""));
+
+        // Invalidate projects cache after successful create
+        let _ = Cache::new().and_then(|c| c.clear_type(CacheType::Projects));
     } else {
         anyhow::bail!("Failed to create project");
     }
@@ -464,8 +499,8 @@ async fn update_project(
 
     if dry_run {
         if output.is_json() || output.has_template() {
-            print_json(
-                &json!({
+            print_json_owned(
+                json!({
                     "dry_run": true,
                     "would_update": {
                         "id": id,
@@ -504,6 +539,9 @@ async fn update_project(
         }
 
         println!("{} Project updated", "+".green());
+
+        // Invalidate projects cache after successful update
+        let _ = Cache::new().and_then(|c| c.clear_type(CacheType::Projects));
     } else {
         anyhow::bail!("Failed to update project");
     }
@@ -532,6 +570,9 @@ async fn delete_project(id: &str, force: bool) -> Result<()> {
 
     if result["data"]["projectDelete"]["success"].as_bool() == Some(true) {
         println!("{} Project deleted", "+".green());
+
+        // Invalidate projects cache after successful delete
+        let _ = Cache::new().and_then(|c| c.clear_type(CacheType::Projects));
     } else {
         anyhow::bail!("Failed to delete project");
     }

@@ -1,13 +1,16 @@
 use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
+use futures::stream::{self, StreamExt};
 use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
 use crate::display_options;
 use crate::input::read_ids_from_stdin;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
 use crate::types::Comment;
@@ -65,18 +68,42 @@ async fn list_comments(issue_ids: &[String], output: &OutputOptions) -> Result<(
 
     let client = LinearClient::new()?;
     let pagination = output.pagination.with_default_limit(100);
-    let mut issues = Vec::new();
-    for id in &final_ids {
-        let mut issue = fetch_issue_meta(&client, id).await?;
-        if issue.is_null() {
-            if !output.is_json() && !output.has_template() {
-                eprintln!("{} Issue not found: {}", "!".yellow(), id);
+    let fetched: Vec<_> = stream::iter(final_ids.iter())
+        .map(|id| {
+            let client = &client;
+            let pagination = &pagination;
+            let id = id.clone();
+            async move {
+                let issue = fetch_issue_meta(client, &id).await;
+                match issue {
+                    Ok(mut issue_val) if !issue_val.is_null() => {
+                        match fetch_issue_comments(client, &id, pagination).await {
+                            Ok(comments) => {
+                                issue_val["comments"] = json!({ "nodes": comments });
+                                Ok((id, issue_val))
+                            }
+                            Err(e) => Err((id, e)),
+                        }
+                    }
+                    Ok(_) => Err((id, anyhow::anyhow!("Issue not found"))),
+                    Err(e) => Err((id, e)),
+                }
             }
-            continue;
+        })
+        .buffer_unordered(10)
+        .collect()
+        .await;
+
+    let mut issues = Vec::new();
+    for result in fetched {
+        match result {
+            Ok((_id, issue)) => issues.push(issue),
+            Err((id, _e)) => {
+                if !output.is_json() && !output.has_template() {
+                    eprintln!("{} Issue not found: {}", "!".yellow(), id);
+                }
+            }
         }
-        let comments = fetch_issue_comments(&client, id, &pagination).await?;
-        issue["comments"] = json!({ "nodes": comments });
-        issues.push(issue);
     }
 
     // JSON output - return raw data for LLM consumption
@@ -84,7 +111,7 @@ async fn list_comments(issue_ids: &[String], output: &OutputOptions) -> Result<(
         if issues.len() == 1 {
             print_json(&issues[0], output)?;
         } else {
-            print_json(&serde_json::json!(issues), output)?;
+            print_json_owned(serde_json::json!(issues), output)?;
         }
         return Ok(());
     }

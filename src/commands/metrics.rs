@@ -3,7 +3,7 @@ use clap::Subcommand;
 use serde_json::json;
 
 use crate::api::LinearClient;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json_owned, OutputOptions};
 
 #[derive(Subcommand, Debug)]
 pub enum MetricsCommands {
@@ -109,7 +109,7 @@ async fn cycle_metrics(id: &str, _team: Option<String>, output: &OutputOptions) 
                 "velocity": completed_points,
             }
         });
-        print_json(&metrics, output)?;
+        print_json_owned(metrics, output)?;
     } else {
         let issues = cycle["issues"]["nodes"].as_array();
         let total = issues.map(|a| a.len()).unwrap_or(0);
@@ -201,7 +201,7 @@ async fn project_metrics(id: &str, output: &OutputOptions) -> Result<()> {
                 "completion_rate": if total > 0 { (completed as f64 / total as f64 * 100.0).round() } else { 0.0 },
             }
         });
-        print_json(&metrics, output)?;
+        print_json_owned(metrics, output)?;
     } else {
         let progress = project["progress"].as_f64().unwrap_or(0.0) * 100.0;
         println!("Project: {}", project["name"].as_str().unwrap_or(id));
@@ -277,8 +277,8 @@ async fn velocity_metrics(team: &str, cycles: usize, output: &OutputOptions) -> 
             .sum::<f64>()
             / velocity.len().max(1) as f64;
 
-        print_json(
-            &json!({
+        print_json_owned(
+            json!({
                 "team": team_data["name"],
                 "cycles": velocity,
                 "average_velocity": avg.round(),

@@ -141,7 +141,10 @@ fn parse_filter(input: &str) -> Result<FilterExpr> {
 }
 
 pub fn print_json(value: &Value, output: &OutputOptions) -> Result<()> {
-    let mut out = value.clone();
+    print_json_owned(value.clone(), output)
+}
+
+pub fn print_json_owned(mut out: Value, output: &OutputOptions) -> Result<()> {
     apply_filters(&mut out, &output.filters);
     apply_sort(&mut out, &output.json);
     if let Some(fields) = output.json.fields.as_ref() {

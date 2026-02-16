@@ -5,8 +5,11 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::{resolve_team_id, LinearClient};
+use crate::cache::{Cache, CacheType};
 use crate::display_options;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
 
@@ -61,25 +64,18 @@ async fn list_cycles(team: &str, include_all: bool, output: &OutputOptions) -> R
     // Resolve team key/name to UUID
     let team_id = resolve_team_id(&client, team, &output.cache).await?;
 
-    let team_query = r#"
-        query($teamId: String!) {
-            team(id: $teamId) {
-                id
-                name
-            }
-        }
-    "#;
-
-    let result = client
-        .query(team_query, Some(json!({ "teamId": team_id })))
-        .await?;
-    let team_data = &result["data"]["team"];
-
-    if team_data.is_null() {
-        anyhow::bail!("Team not found: {}", team);
-    }
-
-    let team_name = team_data["name"].as_str().unwrap_or("");
+    // Look up team name from the teams cache (populated by resolve_team_id)
+    let team_name = Cache::new()
+        .ok()
+        .and_then(|c| c.get(CacheType::Teams))
+        .and_then(|teams| {
+            teams.as_array().and_then(|arr| {
+                arr.iter()
+                    .find(|t| t["id"].as_str() == Some(&team_id))
+                    .and_then(|t| t["name"].as_str().map(|s| s.to_string()))
+            })
+        })
+        .unwrap_or_else(|| team.to_string());
 
     let cycles_query = r#"
         query($teamId: String!, $first: Int, $after: String, $last: Int, $before: String) {
@@ -125,8 +121,8 @@ async fn list_cycles(team: &str, include_all: bool, output: &OutputOptions) -> R
         .collect();
 
     if output.is_json() || output.has_template() {
-        print_json(
-            &json!({
+        print_json_owned(
+            json!({
                 "team": team_name,
                 "cycles": cycles
             }),

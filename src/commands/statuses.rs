@@ -8,7 +8,9 @@ use crate::api::{resolve_team_id, LinearClient};
 use crate::cache::{Cache, CacheType};
 use crate::display_options;
 use crate::input::read_ids_from_stdin;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
 
@@ -72,7 +74,7 @@ async fn list_statuses(team: &str, output: &OutputOptions) -> Result<()> {
         && output.pagination.limit.is_none();
 
     let (team_name, states): (String, Vec<Value>) = if can_use_cache {
-        let cache = Cache::new()?;
+        let cache = Cache::with_ttl(output.cache.effective_ttl_seconds())?;
         if let Some(cached) = cache.get_keyed(CacheType::Statuses, &team_id) {
             let name = cached["team_name"].as_str().unwrap_or("").to_string();
             let states_data = cached["states"].as_array().cloned().unwrap_or_default();
@@ -87,24 +89,18 @@ async fn list_statuses(team: &str, output: &OutputOptions) -> Result<()> {
     let (team_name, states) = if !states.is_empty() {
         (team_name, states)
     } else {
-        let team_query = r#"
-            query($teamId: String!) {
-                team(id: $teamId) {
-                    id
-                    name
-                }
-            }
-        "#;
-        let team_result = client
-            .query(team_query, Some(json!({ "teamId": team_id })))
-            .await?;
-        let team_data = &team_result["data"]["team"];
-
-        if team_data.is_null() {
-            anyhow::bail!("Team not found: {}", team);
-        }
-
-        let name = team_data["name"].as_str().unwrap_or("").to_string();
+        // Look up team name from the teams cache (populated by resolve_team_id)
+        let name = Cache::new()
+            .ok()
+            .and_then(|c| c.get(CacheType::Teams))
+            .and_then(|teams| {
+                teams.as_array().and_then(|arr| {
+                    arr.iter()
+                        .find(|t| t["id"].as_str() == Some(&team_id))
+                        .and_then(|t| t["name"].as_str().map(|s| s.to_string()))
+                })
+            })
+            .unwrap_or_else(|| team.to_string());
 
         let states_query = r#"
             query($teamId: String!, $first: Int, $after: String, $last: Int, $before: String) {
@@ -156,8 +152,8 @@ async fn list_statuses(team: &str, output: &OutputOptions) -> Result<()> {
     };
 
     if output.is_json() || output.has_template() {
-        print_json(
-            &json!({
+        print_json_owned(
+            json!({
                 "team": team_name,
                 "statuses": states
             }),
@@ -271,7 +267,7 @@ async fn get_statuses(ids: &[String], team: &str, output: &OutputOptions) -> Res
     }
 
     if output.is_json() || output.has_template() {
-        print_json(&serde_json::json!(found), output)?;
+        print_json_owned(serde_json::json!(found), output)?;
         return Ok(());
     }
 

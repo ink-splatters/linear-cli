@@ -4,7 +4,7 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
-use crate::output::{print_json, OutputOptions};
+use crate::output::{print_json, print_json_owned, OutputOptions};
 use crate::text::truncate;
 use crate::DISPLAY_OPTIONS;
 
@@ -151,8 +151,8 @@ async fn list_relations(id: &str, output: &OutputOptions) -> Result<()> {
     }
 
     if output.is_json() {
-        print_json(
-            &json!({
+        print_json_owned(
+            json!({
                 "issue": {
                     "id": issue["id"],
                     "identifier": issue["identifier"],

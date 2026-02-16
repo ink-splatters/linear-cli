@@ -1,12 +1,15 @@
 use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
+use crate::cache::{Cache, CacheType};
 use crate::display_options;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::paginate_nodes;
 use crate::text::truncate;
 use crate::types::Label;
@@ -86,68 +89,100 @@ pub async fn handle(cmd: LabelCommands, output: &OutputOptions) -> Result<()> {
 }
 
 async fn list_labels(label_type: &str, output: &OutputOptions) -> Result<()> {
-    let client = LinearClient::new()?;
+    let can_use_cache = !output.cache.no_cache
+        && output.pagination.after.is_none()
+        && output.pagination.before.is_none()
+        && !output.pagination.all
+        && output.pagination.page_size.is_none()
+        && output.pagination.limit.is_none();
 
-    let query = if label_type == "project" {
-        r#"
-            query($first: Int, $after: String, $last: Int, $before: String) {
-                projectLabels(first: $first, after: $after, last: $last, before: $before) {
-                    nodes {
-                        id
-                        name
-                        color
-                        parent { name }
-                    }
-                    pageInfo {
-                        hasNextPage
-                        endCursor
-                        hasPreviousPage
-                        startCursor
-                    }
-                }
-            }
-        "#
+    let cached: Vec<Value> = if can_use_cache {
+        let cache = Cache::with_ttl(output.cache.effective_ttl_seconds())?;
+        cache
+            .get_keyed(CacheType::Labels, label_type)
+            .and_then(|data| data.as_array().cloned())
+            .unwrap_or_default()
     } else {
-        r#"
-            query($first: Int, $after: String, $last: Int, $before: String) {
-                issueLabels(first: $first, after: $after, last: $last, before: $before) {
-                    nodes {
-                        id
-                        name
-                        color
-                        parent { name }
-                    }
-                    pageInfo {
-                        hasNextPage
-                        endCursor
-                        hasPreviousPage
-                        startCursor
-                    }
-                }
-            }
-        "#
+        Vec::new()
     };
 
-    let key = if label_type == "project" {
-        "projectLabels"
+    let mut labels = if !cached.is_empty() {
+        cached
     } else {
-        "issueLabels"
-    };
+        let client = LinearClient::new()?;
 
-    let pagination = output.pagination.with_default_limit(100);
-    let mut labels = paginate_nodes(
-        &client,
-        query,
-        serde_json::Map::new(),
-        &["data", key, "nodes"],
-        &["data", key, "pageInfo"],
-        &pagination,
-        100,
-    )
-    .await?;
+        let query = if label_type == "project" {
+            r#"
+                query($first: Int, $after: String, $last: Int, $before: String) {
+                    projectLabels(first: $first, after: $after, last: $last, before: $before) {
+                        nodes {
+                            id
+                            name
+                            color
+                            parent { name }
+                        }
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                            hasPreviousPage
+                            startCursor
+                        }
+                    }
+                }
+            "#
+        } else {
+            r#"
+                query($first: Int, $after: String, $last: Int, $before: String) {
+                    issueLabels(first: $first, after: $after, last: $last, before: $before) {
+                        nodes {
+                            id
+                            name
+                            color
+                            parent { name }
+                        }
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                            hasPreviousPage
+                            startCursor
+                        }
+                    }
+                }
+            "#
+        };
+
+        let key = if label_type == "project" {
+            "projectLabels"
+        } else {
+            "issueLabels"
+        };
+
+        let pagination = output.pagination.with_default_limit(100);
+        let labels = paginate_nodes(
+            &client,
+            query,
+            serde_json::Map::new(),
+            &["data", key, "nodes"],
+            &["data", key, "pageInfo"],
+            &pagination,
+            100,
+        )
+        .await?;
+
+        if can_use_cache {
+            let cache = Cache::with_ttl(output.cache.effective_ttl_seconds())?;
+            let _ = cache.set_keyed(
+                CacheType::Labels,
+                label_type,
+                serde_json::json!(labels.clone()),
+            );
+        }
+
+        labels
+    };
 
     if output.is_json() || output.has_template() {
-        print_json(&serde_json::json!(labels), output)?;
+        print_json_owned(serde_json::json!(labels), output)?;
         return Ok(());
     }
 
@@ -253,6 +288,9 @@ async fn create_label(
             label["name"].as_str().unwrap_or("")
         );
         println!("  ID: {}", label["id"].as_str().unwrap_or(""));
+
+        // Invalidate labels cache after successful create
+        let _ = Cache::new().and_then(|c| c.clear_type(CacheType::Labels));
     } else {
         anyhow::bail!("Failed to create label");
     }
@@ -300,6 +338,9 @@ async fn delete_label(id: &str, label_type: &str, force: bool) -> Result<()> {
 
     if result["data"][key]["success"].as_bool() == Some(true) {
         println!("{} Label deleted", "+".green());
+
+        // Invalidate labels cache after successful delete
+        let _ = Cache::new().and_then(|c| c.clear_type(CacheType::Labels));
     } else {
         anyhow::bail!("Failed to delete label");
     }

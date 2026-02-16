@@ -10,7 +10,9 @@ use crate::api::{
 };
 use crate::display_options;
 use crate::input::read_ids_from_stdin;
-use crate::output::{ensure_non_empty, filter_values, print_json, sort_values, OutputOptions};
+use crate::output::{
+    ensure_non_empty, filter_values, print_json, print_json_owned, sort_values, OutputOptions,
+};
 use crate::pagination::{paginate_nodes, stream_nodes};
 use crate::priority::priority_to_string;
 use crate::text::truncate;
@@ -473,7 +475,7 @@ async fn list_issues(
     .await?;
 
     if output.is_json() || output.has_template() {
-        print_json(&serde_json::json!(issues), output)?;
+        print_json_owned(serde_json::json!(issues), output)?;
         return Ok(());
     }
 
@@ -567,7 +569,7 @@ async fn get_issues(ids: &[String], output: &OutputOptions) -> Result<()> {
                 })
             })
             .collect();
-        print_json(&serde_json::json!(issues), output)?;
+        print_json_owned(serde_json::json!(issues), output)?;
         return Ok(());
     }
 
@@ -796,8 +798,8 @@ async fn create_issue(
     // Dry run: show what would be created without actually creating
     if dry_run {
         if output.is_json() || output.has_template() {
-            print_json(
-                &json!({
+            print_json_owned(
+                json!({
                     "dry_run": true,
                     "would_create": {
                         "title": final_title,
@@ -1007,8 +1009,8 @@ async fn update_issue(
 
     if dry_run {
         if output.is_json() || output.has_template() {
-            print_json(
-                &json!({
+            print_json_owned(
+                json!({
                     "dry_run": true,
                     "would_update": {
                         "id": id,
