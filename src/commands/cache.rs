@@ -9,7 +9,7 @@ use crate::cache::{Cache, CacheType};
 pub enum CacheCommands {
     /// Clear all cached data
     Clear {
-        /// Only clear a specific cache type (teams, users, statuses, labels)
+        /// Only clear a specific cache type (teams, users, statuses, labels, projects)
         #[arg(short, long)]
         r#type: Option<String>,
     },
@@ -47,9 +47,10 @@ async fn clear_cache(cache_type: Option<String>) -> Result<()> {
             "users" => CacheType::Users,
             "statuses" | "states" => CacheType::Statuses,
             "labels" => CacheType::Labels,
+            "projects" => CacheType::Projects,
             _ => {
                 anyhow::bail!(
-                    "Unknown cache type: '{}'. Valid types: teams, users, statuses, labels",
+                    "Unknown cache type: '{}'. Valid types: teams, users, statuses, labels, projects",
                     type_str
                 );
             }
