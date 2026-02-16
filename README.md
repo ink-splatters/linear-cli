@@ -142,6 +142,19 @@ linear-cli export markdown -t ENG             # Export to Markdown
 linear-cli rel add LIN-123 blocks LIN-456       # LIN-123 blocks LIN-456
 linear-cli rel list LIN-123                     # List issue relations
 
+# Cycles
+linear-cli c list -t ENG                        # List team cycles
+linear-cli c current -t ENG                     # Show current cycle
+linear-cli c create -t ENG --name "Sprint 5"    # Create a cycle
+linear-cli c update CYCLE_ID --name "Sprint 5b" # Update cycle name
+
+# Notifications
+linear-cli n list                               # List unread notifications
+linear-cli n count                              # Show unread count
+linear-cli n read-all                           # Mark all as read
+linear-cli n archive NOTIF_ID                   # Archive a notification
+linear-cli n archive-all                        # Archive all notifications
+
 # JSON output (great for AI agents)
 linear-cli i get LIN-123 --output json --compact
 linear-cli i list --output json --fields identifier,title,state.name
