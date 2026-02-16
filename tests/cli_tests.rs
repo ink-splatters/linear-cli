@@ -514,3 +514,68 @@ fn test_documents_help_includes_delete() {
     assert_eq!(code, 0);
     assert!(stdout.contains("delete"));
 }
+
+// --- v0.3.5 new subcommand tests ---
+
+#[test]
+fn test_triage_help() {
+    let (code, stdout, _stderr) = run_cli(&["triage", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("list"));
+    assert!(stdout.contains("claim"));
+}
+
+#[test]
+fn test_triage_alias() {
+    let (code1, stdout1, _) = run_cli(&["tr", "--help"]);
+    let (code2, stdout2, _) = run_cli(&["triage", "--help"]);
+    assert_eq!(code1, 0);
+    assert_eq!(code2, 0);
+    assert_eq!(stdout1, stdout2);
+}
+
+#[test]
+fn test_notifications_archive_help() {
+    let (code, stdout, _stderr) = run_cli(&["notifications", "archive", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("id") || stdout.contains("ID"));
+}
+
+#[test]
+fn test_notifications_archive_all_help() {
+    let (code, _stdout, _stderr) = run_cli(&["notifications", "archive-all", "--help"]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_notifications_help_includes_archive() {
+    let (code, stdout, _stderr) = run_cli(&["notifications", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("archive"));
+}
+
+#[test]
+fn test_cycles_create_help() {
+    let (code, stdout, _stderr) = run_cli(&["cycles", "create", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--team"));
+    assert!(stdout.contains("--name"));
+    assert!(stdout.contains("--starts-at"));
+    assert!(stdout.contains("--ends-at"));
+}
+
+#[test]
+fn test_cycles_update_help() {
+    let (code, stdout, _stderr) = run_cli(&["cycles", "update", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--name"));
+    assert!(stdout.contains("--dry-run"));
+}
+
+#[test]
+fn test_cycles_help_includes_create() {
+    let (code, stdout, _stderr) = run_cli(&["cycles", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("create"));
+    assert!(stdout.contains("update"));
+}
