@@ -78,12 +78,14 @@ where
                 if attempt < config.max_retries && e.is_retryable() {
                     let retry_after = e.retry_after();
                     let delay = config.delay_for_attempt(attempt, retry_after);
-                    eprintln!(
-                        "Attempt {} failed: {}. Retrying in {:?}...",
-                        attempt + 1,
-                        e,
-                        delay
-                    );
+                    if !crate::output::is_quiet() {
+                        eprintln!(
+                            "Attempt {} failed: {}. Retrying in {:?}...",
+                            attempt + 1,
+                            e,
+                            delay
+                        );
+                    }
                     sleep(delay).await;
                     last_error = Some(e);
                 } else {

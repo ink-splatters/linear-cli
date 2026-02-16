@@ -701,6 +701,10 @@ async fn main() -> Result<()> {
         dry_run: cli.dry_run,
     };
 
+    output::set_quiet_mode(
+        cli.quiet || matches!(cli.output, OutputFormat::Json | OutputFormat::Ndjson),
+    );
+
     if cli.schema {
         let schema = serde_json::json!({
             "schema_version": "1.0",

@@ -19,14 +19,18 @@ pub fn get_key(profile: &str) -> Result<Option<String>> {
         Ok(password) => Ok(Some(password)),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(keyring::Error::NoStorageAccess(_)) => {
-            eprintln!("Warning: Keyring not available, falling back to config file");
+            if !crate::output::is_quiet() {
+                eprintln!("Warning: Keyring not available, falling back to config file");
+            }
             Ok(None)
         }
         Err(e) => {
-            eprintln!(
-                "Warning: Keyring error ({}), falling back to config file",
-                e
-            );
+            if !crate::output::is_quiet() {
+                eprintln!(
+                    "Warning: Keyring error ({}), falling back to config file",
+                    e
+                );
+            }
             Ok(None)
         }
     }

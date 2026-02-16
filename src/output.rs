@@ -12,6 +12,16 @@ use crate::json_path::get_path;
 use crate::pagination::PaginationOptions;
 use crate::OutputFormat;
 
+static QUIET_MODE: OnceLock<bool> = OnceLock::new();
+
+pub fn set_quiet_mode(quiet: bool) {
+    let _ = QUIET_MODE.set(quiet);
+}
+
+pub fn is_quiet() -> bool {
+    QUIET_MODE.get().copied().unwrap_or(false)
+}
+
 #[derive(Debug, Clone, Copy, Default, ValueEnum, PartialEq)]
 pub enum SortOrder {
     #[default]
