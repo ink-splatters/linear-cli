@@ -32,6 +32,14 @@ pub enum NotificationCommands {
     ReadAll,
     /// Show unread notification count
     Count,
+    /// Archive a notification
+    Archive {
+        /// Notification ID
+        id: String,
+    },
+    /// Archive all notifications
+    #[command(alias = "aa")]
+    ArchiveAll,
 }
 
 #[derive(Tabled)]
@@ -54,6 +62,8 @@ pub async fn handle(cmd: NotificationCommands, output: &OutputOptions) -> Result
         NotificationCommands::Read { id } => mark_as_read(&id).await,
         NotificationCommands::ReadAll => mark_all_as_read().await,
         NotificationCommands::Count => show_count(output).await,
+        NotificationCommands::Archive { id } => archive_notification(&id).await,
+        NotificationCommands::ArchiveAll => archive_all_notifications().await,
     }
 }
 
@@ -331,6 +341,120 @@ async fn mark_all_as_read() -> Result<()> {
     if success_count < count {
         println!(
             "  {} Failed to mark {} notification{}",
+            "!".yellow(),
+            count - success_count,
+            if count - success_count == 1 { "" } else { "s" }
+        );
+    }
+
+    Ok(())
+}
+
+async fn archive_notification(id: &str) -> Result<()> {
+    let client = LinearClient::new()?;
+
+    let mutation = r#"
+        mutation($id: String!) {
+            notificationArchive(id: $id) {
+                success
+            }
+        }
+    "#;
+
+    let result = client.mutate(mutation, Some(json!({ "id": id }))).await?;
+
+    if result["data"]["notificationArchive"]["success"].as_bool() == Some(true) {
+        println!("{} Notification archived", "+".green());
+    } else {
+        anyhow::bail!("Failed to archive notification");
+    }
+
+    Ok(())
+}
+
+async fn archive_all_notifications() -> Result<()> {
+    let client = LinearClient::new()?;
+
+    let query = r#"
+        query($first: Int, $after: String) {
+            notifications(first: $first, after: $after) {
+                nodes {
+                    id
+                    archivedAt
+                }
+                pageInfo {
+                    hasNextPage
+                    endCursor
+                }
+            }
+        }
+    "#;
+
+    let pagination = PaginationOptions {
+        all: true,
+        ..Default::default()
+    };
+
+    let notifications = paginate_nodes(
+        &client,
+        query,
+        serde_json::Map::new(),
+        &["data", "notifications", "nodes"],
+        &["data", "notifications", "pageInfo"],
+        &pagination,
+        100,
+    )
+    .await?;
+
+    let unarchived: Vec<_> = notifications
+        .iter()
+        .filter(|n| n["archivedAt"].is_null())
+        .filter_map(|n| n["id"].as_str())
+        .collect();
+
+    if unarchived.is_empty() {
+        println!("{} No notifications to archive.", "+".green());
+        return Ok(());
+    }
+
+    let count = unarchived.len();
+    println!("Archiving {} notifications...", count);
+
+    let mutation = r#"
+        mutation($id: String!) {
+            notificationArchive(id: $id) {
+                success
+            }
+        }
+    "#;
+
+    use futures::stream::{self, StreamExt};
+    let results: Vec<_> = stream::iter(unarchived.iter())
+        .map(|id| {
+            let client = client.clone();
+            let id = id.to_string();
+            async move {
+                client
+                    .mutate(mutation, Some(json!({ "id": id })))
+                    .await
+                    .is_ok()
+            }
+        })
+        .buffer_unordered(10)
+        .collect()
+        .await;
+    let success_count = results.iter().filter(|&&r| r).count();
+
+    println!(
+        "{} Archived {} notification{}",
+        "+".green(),
+        success_count,
+        if success_count == 1 { "" } else { "s" }
+    );
+
+    if success_count < count {
+        println!(
+            "  {} Failed to archive {} notification{}",
             "!".yellow(),
             count - success_count,
             if count - success_count == 1 { "" } else { "s" }
