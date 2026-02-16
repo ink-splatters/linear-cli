@@ -5,10 +5,10 @@
 //! codebase can continue using `Value` for complex nested data while leveraging
 //! these types for common operations.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A Linear issue with all commonly used fields.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Issue {
     pub id: String,
@@ -59,7 +59,7 @@ pub struct Issue {
 }
 
 /// A minimal issue reference for parent/child relationships.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueRef {
     pub id: String,
@@ -69,14 +69,14 @@ pub struct IssueRef {
 }
 
 /// Connection wrapper for issues (for sub-issues, etc.).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueConnection {
     pub nodes: Vec<IssueRef>,
 }
 
 /// A workflow state (issue status).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowState {
     pub id: String,
@@ -91,7 +91,7 @@ pub struct WorkflowState {
 }
 
 /// A Linear user.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
     pub id: String,
@@ -109,7 +109,7 @@ pub struct User {
 }
 
 /// A Linear team.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Team {
     pub id: String,
@@ -125,10 +125,23 @@ pub struct Team {
     pub timezone: Option<String>,
     #[serde(default)]
     pub private: Option<bool>,
+    #[serde(default)]
+    pub issue_count: Option<i64>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// A project status reference.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectStatus {
+    pub name: String,
 }
 
 /// A Linear project.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
     pub id: String,
@@ -146,7 +159,11 @@ pub struct Project {
     #[serde(default)]
     pub state: Option<String>,
     #[serde(default)]
+    pub status: Option<ProjectStatus>,
+    #[serde(default)]
     pub progress: Option<f64>,
+    #[serde(default)]
+    pub start_date: Option<String>,
     #[serde(default)]
     pub target_date: Option<String>,
     #[serde(default)]
@@ -159,10 +176,12 @@ pub struct Project {
     pub created_at: Option<String>,
     #[serde(default)]
     pub updated_at: Option<String>,
+    #[serde(default)]
+    pub labels: Option<LabelConnection>,
 }
 
 /// A sprint cycle.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cycle {
     pub id: String,
@@ -183,7 +202,7 @@ pub struct Cycle {
 }
 
 /// An issue label.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Label {
     pub id: String,
@@ -197,7 +216,7 @@ pub struct Label {
 }
 
 /// A minimal label reference.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabelRef {
     pub id: String,
@@ -205,14 +224,14 @@ pub struct LabelRef {
 }
 
 /// Connection wrapper for labels.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabelConnection {
     pub nodes: Vec<Label>,
 }
 
 /// A comment on an issue.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Comment {
     pub id: String,
@@ -229,7 +248,7 @@ pub struct Comment {
 }
 
 /// A document in Linear.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
     pub id: String,
@@ -238,6 +257,8 @@ pub struct Document {
     pub content: Option<String>,
     #[serde(default)]
     pub slug_id: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
     #[serde(default)]
     pub icon: Option<String>,
     #[serde(default)]
@@ -253,7 +274,7 @@ pub struct Document {
 }
 
 /// A notification from Linear.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Notification {
     pub id: String,
@@ -277,7 +298,7 @@ pub struct Notification {
 }
 
 /// Pagination info from GraphQL connections.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageInfo {
     #[serde(default)]
@@ -291,7 +312,7 @@ pub struct PageInfo {
 }
 
 /// A roadmap in Linear.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Roadmap {
     pub id: String,
@@ -307,7 +328,7 @@ pub struct Roadmap {
 }
 
 /// An initiative in Linear.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Initiative {
     pub id: String,
@@ -329,7 +350,7 @@ pub struct Initiative {
 }
 
 /// A favorite item in Linear.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Favorite {
     pub id: String,
@@ -349,7 +370,7 @@ pub struct Favorite {
 }
 
 /// An issue relation (blocking, related, etc.).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueRelation {
     pub id: String,
@@ -365,7 +386,7 @@ pub struct IssueRelation {
 }
 
 /// A time tracking entry.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeEntry {
     pub id: String,
@@ -384,7 +405,7 @@ pub struct TimeEntry {
 }
 
 /// The current viewer (authenticated user).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Viewer {
     pub id: String,
@@ -399,10 +420,14 @@ pub struct Viewer {
     pub active: Option<bool>,
     #[serde(default)]
     pub admin: Option<bool>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
 }
 
 /// Organization info.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Organization {
     pub id: String,
