@@ -101,7 +101,7 @@ pub async fn run(default_team: Option<String>) -> Result<()> {
             .default(0)
             .interact_on(&term)?;
 
-        match actions.get(selection).unwrap() {
+        match actions.get(selection).expect("selection out of range") {
             MenuAction::CreateIssue => {
                 if let Err(e) = create_issue_interactive(&client, &current_team).await {
                     println!("{} Error: {}", "!".red(), e);
