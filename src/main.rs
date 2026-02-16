@@ -79,7 +79,7 @@ pub struct AgentOptions {
 
 COMMON FLAGS:
     --output table|json|ndjson    Output format (default: table)
-    --color auto|always|never     Color output control
+    --color-mode auto|always|never   Color output control
     --no-color                    Disable color output
     --width N                     Max table column width
     --no-truncate                 Disable table truncation
@@ -118,13 +118,13 @@ struct Cli {
 
     /// Color output: auto, always, or never
     #[arg(
-        long,
+        long = "color-mode",
         global = true,
         value_enum,
         default_value = "auto",
         conflicts_with = "no_color"
     )]
-    color: ColorChoice,
+    color_mode: ColorChoice,
 
     /// Disable color output
     #[arg(long, global = true)]
@@ -687,9 +687,9 @@ enum WatchCommands {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    if cli.no_color || cli.color == ColorChoice::Never {
+    if cli.no_color || cli.color_mode == ColorChoice::Never {
         colored::control::set_override(false);
-    } else if cli.color == ColorChoice::Always {
+    } else if cli.color_mode == ColorChoice::Always {
         colored::control::set_override(true);
     }
     set_cli_state(DisplayOptions {
