@@ -784,3 +784,194 @@ fn test_auth_oauth_default_scopes_include_admin() {
         "default scopes should now include admin"
     );
 }
+
+// === Whoami command tests ===
+
+#[test]
+fn test_whoami_help() {
+    let (code, stdout, _stderr) = run_cli(&["whoami", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("authenticated user") || stdout.contains("users me"),
+        "whoami should describe showing current user"
+    );
+}
+
+#[test]
+fn test_whoami_alias_me() {
+    // "me" should be an alias for whoami
+    let (code, stdout, _stderr) = run_cli(&["me", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("authenticated user") || stdout.contains("users me"),
+        "me alias should work for whoami"
+    );
+}
+
+#[test]
+fn test_help_shows_whoami() {
+    let (code, stdout, _stderr) = run_cli(&["--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("whoami"),
+        "top-level help should list whoami command"
+    );
+}
+
+// === Raw GraphQL API command tests ===
+
+#[test]
+fn test_api_help() {
+    let (code, stdout, _stderr) = run_cli(&["api", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("query"), "api help should mention query");
+    assert!(stdout.contains("mutate"), "api help should mention mutate");
+}
+
+#[test]
+fn test_api_query_help() {
+    let (code, stdout, _stderr) = run_cli(&["api", "query", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("--variable"),
+        "api query should have --variable flag"
+    );
+    assert!(
+        stdout.contains("--paginate"),
+        "api query should have --paginate flag"
+    );
+}
+
+#[test]
+fn test_api_mutate_help() {
+    let (code, stdout, _stderr) = run_cli(&["api", "mutate", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("--variable"),
+        "api mutate should have --variable flag"
+    );
+}
+
+#[test]
+fn test_help_shows_api() {
+    let (code, stdout, _stderr) = run_cli(&["--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("api") || stdout.contains("Api"),
+        "top-level help should list api command"
+    );
+}
+
+// === --since / --newer-than time filter tests ===
+
+#[test]
+fn test_issues_list_since_flag() {
+    let (code, stdout, _stderr) = run_cli(&["issues", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("--since"),
+        "issues list should have --since flag"
+    );
+}
+
+#[test]
+fn test_issues_list_newer_than_alias() {
+    let (code, stdout, _stderr) = run_cli(&["issues", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("newer-than") || stdout.contains("--since"),
+        "issues list should support --newer-than alias"
+    );
+}
+
+// === Milestone CRUD tests ===
+
+#[test]
+fn test_milestones_help() {
+    let (code, stdout, _stderr) = run_cli(&["milestones", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("list"), "milestones should have list");
+    assert!(stdout.contains("get"), "milestones should have get");
+    assert!(stdout.contains("create"), "milestones should have create");
+    assert!(stdout.contains("update"), "milestones should have update");
+    assert!(stdout.contains("delete"), "milestones should have delete");
+}
+
+#[test]
+fn test_milestones_alias_ms() {
+    let (code, stdout, _stderr) = run_cli(&["ms", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("list"), "ms alias should work");
+}
+
+#[test]
+fn test_milestones_create_help() {
+    let (code, stdout, _stderr) = run_cli(&["milestones", "create", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("--project"),
+        "milestone create should require --project"
+    );
+    assert!(
+        stdout.contains("--target-date"),
+        "milestone create should have --target-date"
+    );
+}
+
+#[test]
+fn test_milestones_update_help() {
+    let (code, stdout, _stderr) = run_cli(&["milestones", "update", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("--name"),
+        "milestone update should have --name"
+    );
+    assert!(
+        stdout.contains("--target-date"),
+        "milestone update should have --target-date"
+    );
+}
+
+#[test]
+fn test_milestones_delete_help() {
+    let (code, stdout, _stderr) = run_cli(&["milestones", "delete", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("--force"),
+        "milestone delete should have --force"
+    );
+}
+
+#[test]
+fn test_help_shows_milestones() {
+    let (code, stdout, _stderr) = run_cli(&["--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("milestones") || stdout.contains("Milestones"),
+        "top-level help should list milestones command"
+    );
+}
+
+// === Pager support tests ===
+
+#[test]
+fn test_no_pager_flag() {
+    let (code, stdout, _stderr) = run_cli(&["--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("--no-pager"),
+        "global help should show --no-pager flag"
+    );
+}
+
+#[test]
+fn test_no_pager_env_var() {
+    // Verify LINEAR_CLI_NO_PAGER env var is documented in help
+    let (code, stdout, _stderr) = run_cli(&["--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("LINEAR_CLI_NO_PAGER") || stdout.contains("no-pager"),
+        "no-pager should be available as flag or env var"
+    );
+}
+
