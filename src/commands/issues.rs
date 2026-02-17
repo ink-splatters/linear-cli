@@ -491,6 +491,13 @@ async fn list_issues(
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
+    // Resolve team key/name to ID upfront (supports both key like "SCW" and full name)
+    let team_id = if let Some(ref t) = team {
+        Some(resolve_team_id(&client, t, &output.cache).await?)
+    } else {
+        None
+    };
+
     // Parse --since date
     let since_date = if let Some(ref since_str) = since {
         let date = crate::dates::parse_due_date(since_str)
@@ -540,7 +547,7 @@ async fn list_issues(
     "#
     } else {
         r#"
-        query($team: String, $state: String, $assignee: String, $project: String, $includeArchived: Boolean, $first: Int, $after: String, $last: Int, $before: String) {
+        query($teamId: ID, $state: String, $assignee: String, $project: String, $includeArchived: Boolean, $first: Int, $after: String, $last: Int, $before: String) {
             issues(
                 first: $first,
                 after: $after,
@@ -548,7 +555,7 @@ async fn list_issues(
                 before: $before,
                 includeArchived: $includeArchived,
                 filter: {
-                    team: { name: { eqIgnoreCase: $team } },
+                    team: { id: { eq: $teamId } },
                     state: { name: { eqIgnoreCase: $state } },
                     assignee: { name: { eqIgnoreCase: $assignee } },
                     project: { name: { eqIgnoreCase: $project } }
@@ -585,9 +592,9 @@ async fn list_issues(
             }
         }
         // Merge CLI filters on top of view filter
-        if let Some(t) = team {
+        if let Some(ref t) = team_id {
             if let Some(obj) = filter.as_object_mut() {
-                obj.insert("team".to_string(), json!({ "name": { "eqIgnoreCase": t } }));
+                obj.insert("team".to_string(), json!({ "id": { "eq": t } }));
             }
         }
         if let Some(s) = state {
@@ -617,8 +624,8 @@ async fn list_issues(
         if let Some(ref since_ts) = since_date {
             filter["createdAt"] = json!({ "gte": since_ts });
         }
-        if let Some(t) = team {
-            filter["team"] = json!({ "name": { "eqIgnoreCase": t } });
+        if let Some(ref t) = team_id {
+            filter["team"] = json!({ "id": { "eq": t } });
         }
         if let Some(s) = state {
             filter["state"] = json!({ "name": { "eqIgnoreCase": s } });
@@ -634,8 +641,8 @@ async fn list_issues(
         }
         variables.insert("filter".to_string(), filter);
     } else {
-        if let Some(t) = team {
-            variables.insert("team".to_string(), json!(t));
+        if let Some(ref t) = team_id {
+            variables.insert("teamId".to_string(), json!(t));
         }
         if let Some(s) = state {
             variables.insert("state".to_string(), json!(s));
