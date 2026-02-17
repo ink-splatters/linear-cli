@@ -592,28 +592,33 @@ impl LinearClient {
         Ok(total)
     }
 
-    /// Resolve authentication from config (checks API key first, then OAuth)
+    /// Resolve authentication from config (checks OAuth explicitly, then API key)
     fn resolve_auth() -> Result<AuthState> {
-        // Try standard API key first
-        let api_key = config::get_api_key()?;
+        let profile = config::current_profile().unwrap_or_else(|_| "default".to_string());
 
-        // If it starts with "Bearer ", it's an OAuth token from get_api_key()
-        if api_key.starts_with("Bearer ") {
-            // Load full OAuth config for refresh support
-            let profile = config::current_profile().unwrap_or_else(|_| "default".to_string());
-            if let Ok(Some(oauth)) = config::get_oauth_config(&profile) {
-                return Ok(AuthState::OAuth {
-                    access_token: oauth.access_token,
-                    refresh_token: oauth.refresh_token,
-                    client_id: oauth.client_id,
-                    expires_at: oauth.expires_at,
-                    profile,
-                });
+        // Check for OAuth config explicitly (no Bearer prefix heuristic)
+        if let Ok(Some(oauth)) = config::get_oauth_config(&profile) {
+            if !oauth.access_token.is_empty() {
+                // If token has a refresh_token or isn't expired, use OAuth
+                let is_expired = oauth.expires_at
+                    .map(|exp| chrono::Utc::now().timestamp() >= (exp - 300))
+                    .unwrap_or(false);
+
+                if oauth.refresh_token.is_some() || !is_expired {
+                    return Ok(AuthState::OAuth {
+                        access_token: oauth.access_token,
+                        refresh_token: oauth.refresh_token,
+                        client_id: oauth.client_id,
+                        expires_at: oauth.expires_at,
+                        profile,
+                    });
+                }
+                // OAuth expired without refresh token — fall through to API key
             }
-            // Fallback: use as plain bearer token without refresh
-            return Ok(AuthState::ApiKey(api_key));
         }
 
+        // Fall back to standard API key
+        let api_key = config::get_api_key()?;
         Ok(AuthState::ApiKey(api_key))
     }
 
@@ -656,7 +661,9 @@ impl LinearClient {
                     token_type: new_tokens.token_type.clone(),
                     scopes,
                 };
-                let _ = config::save_oauth_config(profile, &oauth_config);
+                if let Err(e) = config::save_oauth_config(profile, &oauth_config) {
+                    eprintln!("Warning: Failed to persist refreshed OAuth tokens: {}", e);
+                }
 
                 let new_auth = AuthState::OAuth {
                     access_token: new_tokens.access_token,

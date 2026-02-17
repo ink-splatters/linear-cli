@@ -228,23 +228,41 @@ async fn status(validate: bool, output: &OutputOptions) -> Result<()> {
 
     let mut validated = None;
     if validate {
-        // Try to get key using the priority: env > keyring > config
-        let key = env_key.clone().or_else(|| {
-            #[cfg(feature = "secure-storage")]
-            if let Some(ref p) = profile {
-                if let Ok(Some(k)) = crate::keyring::get_key(p) {
-                    return Some(k);
-                }
+        if oauth_configured {
+            // Validate OAuth by querying the viewer with the access token
+            if let Some(ref oauth) = oauth_config {
+                let client = LinearClient::with_api_key(format!("Bearer {}", oauth.access_token));
+                validated = match client {
+                    Ok(c) => {
+                        let query = r#"query { viewer { id } }"#;
+                        Some(c.query(query, None).await
+                            .map(|r| !r["data"]["viewer"].is_null())
+                            .unwrap_or(false))
+                    }
+                    Err(_) => Some(false),
+                };
+            } else {
+                validated = Some(false);
             }
-            profile
-                .as_ref()
-                .and_then(|p| config_data.workspaces.get(p))
-                .map(|w| w.api_key.clone())
-        });
-        validated = match key {
-            Some(key) => Some(validate_key(&key).await.is_ok()),
-            None => Some(false),
-        };
+        } else {
+            // Validate API key using the priority: env > keyring > config
+            let key = env_key.clone().or_else(|| {
+                #[cfg(feature = "secure-storage")]
+                if let Some(ref p) = profile {
+                    if let Ok(Some(k)) = crate::keyring::get_key(p) {
+                        return Some(k);
+                    }
+                }
+                profile
+                    .as_ref()
+                    .and_then(|p| config_data.workspaces.get(p))
+                    .map(|w| w.api_key.clone())
+            });
+            validated = match key {
+                Some(key) => Some(validate_key(&key).await.is_ok()),
+                None => Some(false),
+            };
+        }
     }
 
     if output.is_json() || output.has_template() {
@@ -438,7 +456,7 @@ async fn oauth_login(
     let state = oauth::generate_state();
 
     // Build authorization URL
-    let authorize_url = oauth::build_authorize_url(&client_id, &redirect_uri, &scopes, &state, &pkce);
+    let authorize_url = oauth::build_authorize_url(&client_id, &redirect_uri, &scopes, &state, &pkce)?;
 
     println!("Opening browser for Linear OAuth authentication...");
     println!("If the browser doesn't open, visit this URL:");
@@ -487,8 +505,16 @@ async fn oauth_login(
     if secure {
         let json = serde_json::to_string(&oauth_config)?;
         crate::keyring::set_oauth_tokens(&profile, &json)?;
-        // Also save a minimal version in config (without sensitive tokens)
-        config::save_oauth_config(&profile, &oauth_config)?;
+        // Save only metadata in config (no secrets)
+        let metadata_only = config::OAuthConfig {
+            client_id: oauth_config.client_id.clone(),
+            access_token: String::new(),
+            refresh_token: None,
+            expires_at: oauth_config.expires_at,
+            token_type: oauth_config.token_type.clone(),
+            scopes: oauth_config.scopes.clone(),
+        };
+        config::save_oauth_config(&profile, &metadata_only)?;
 
         if output.is_json() || output.has_template() {
             print_json_owned(

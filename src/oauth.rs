@@ -58,8 +58,9 @@ pub fn build_authorize_url(
     scopes: &str,
     state: &str,
     pkce: &PkceChallenge,
-) -> String {
-    let mut url = url::Url::parse(LINEAR_AUTHORIZE_URL).expect("valid authorize URL");
+) -> Result<String> {
+    let mut url = url::Url::parse(LINEAR_AUTHORIZE_URL)
+        .context("Failed to parse Linear authorize URL")?;
     url.query_pairs_mut()
         .append_pair("client_id", client_id)
         .append_pair("redirect_uri", redirect_uri)
@@ -69,7 +70,7 @@ pub fn build_authorize_url(
         .append_pair("code_challenge", &pkce.challenge)
         .append_pair("code_challenge_method", "S256")
         .append_pair("prompt", "consent");
-    url.to_string()
+    Ok(url.to_string())
 }
 
 /// Start a temporary HTTP server on localhost to receive the OAuth callback.
@@ -93,17 +94,35 @@ pub async fn wait_for_callback(port: u16, expected_state: &str) -> Result<String
     // Convert to std stream for sync read/write
     let std_stream = stream.into_std()?;
     std_stream.set_nonblocking(false)?;
+    std_stream.set_read_timeout(Some(std::time::Duration::from_secs(10)))?;
     let mut reader = BufReader::new(&std_stream);
 
     // Read the HTTP request line
     let mut request_line = String::new();
     reader.read_line(&mut request_line)?;
 
-    // Parse the URL from "GET /callback?code=xxx&state=yyy HTTP/1.1"
-    let path = request_line
-        .split_whitespace()
-        .nth(1)
-        .context("Invalid HTTP request")?;
+    // Validate HTTP method and path
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().context("Invalid HTTP request: missing method")?;
+    let path = parts.next().context("Invalid HTTP request: missing path")?;
+
+    if method != "GET" {
+        let response = "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/html\r\n\r\n\
+             <html><body><h2>Method Not Allowed</h2>\
+             <p>Expected GET request.</p></body></html>";
+        let mut writer = &std_stream;
+        let _ = writer.write_all(response.as_bytes());
+        anyhow::bail!("OAuth callback received non-GET request: {}", method);
+    }
+
+    if !path.starts_with("/callback") {
+        let response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n\
+             <html><body><h2>Not Found</h2>\
+             <p>Expected /callback path.</p></body></html>";
+        let mut writer = &std_stream;
+        let _ = writer.write_all(response.as_bytes());
+        anyhow::bail!("OAuth callback received unexpected path: {}", path);
+    }
 
     let full_url = format!("http://localhost{}", path);
     let parsed = url::Url::parse(&full_url).context("Failed to parse callback URL")?;
@@ -359,7 +378,8 @@ mod tests {
             "read,write",
             "test-state",
             &pkce,
-        );
+        )
+        .unwrap();
         assert!(url.contains("client_id=test-client"));
         assert!(url.contains("response_type=code"));
         assert!(url.contains("scope=read"));
@@ -371,7 +391,8 @@ mod tests {
     #[test]
     fn test_build_authorize_url_base() {
         let pkce = PkceChallenge::generate();
-        let url = build_authorize_url("c", "http://localhost:8484/callback", "read", "s", &pkce);
+        let url = build_authorize_url("c", "http://localhost:8484/callback", "read", "s", &pkce)
+            .unwrap();
         assert!(url.starts_with("https://linear.app/oauth/authorize?"));
     }
 
@@ -514,7 +535,8 @@ mod tests {
             "read,write",
             "state+special/chars",
             &pkce,
-        );
+        )
+        .unwrap();
         // URL should encode spaces and special chars
         assert!(url.contains("client+with+spaces") || url.contains("client%20with%20spaces"));
         assert!(!url.contains(' '), "URL should not contain raw spaces");
@@ -523,7 +545,8 @@ mod tests {
     #[test]
     fn test_build_authorize_url_includes_prompt() {
         let pkce = PkceChallenge::generate();
-        let url = build_authorize_url("c", "http://localhost:8484/callback", "read", "s", &pkce);
+        let url = build_authorize_url("c", "http://localhost:8484/callback", "read", "s", &pkce)
+            .unwrap();
         assert!(url.contains("prompt=consent"), "URL should include prompt=consent");
     }
 

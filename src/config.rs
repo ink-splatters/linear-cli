@@ -79,7 +79,10 @@ pub fn save_config(config: &Config) -> Result<()> {
     let path = config_path()?;
     let content = toml::to_string_pretty(config)?;
 
-    // Use secure file permissions on Unix (0600 = owner read/write only)
+    // Write to temp file then rename for atomicity
+    let dir = path.parent().context("Config path has no parent directory")?;
+    let temp_path = dir.join(".config.toml.tmp");
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -88,15 +91,17 @@ pub fn save_config(config: &Config) -> Result<()> {
             .create(true)
             .truncate(true)
             .mode(0o600)
-            .open(&path)?;
+            .open(&temp_path)?;
         file.write_all(content.as_bytes())?;
+        file.flush()?;
     }
 
     #[cfg(not(unix))]
     {
-        fs::write(&path, content)?;
+        fs::write(&temp_path, &content)?;
     }
 
+    fs::rename(&temp_path, &path).context("Failed to atomically update config file")?;
     Ok(())
 }
 
@@ -143,22 +148,6 @@ pub fn get_api_key() -> Result<String> {
 
         if let Ok(Some(key)) = crate::keyring::get_key(&profile) {
             return Ok(key);
-        }
-    }
-
-    // Check for OAuth tokens
-    {
-        let config = load_config()?;
-        let profile = std::env::var("LINEAR_CLI_PROFILE")
-            .ok()
-            .filter(|p| !p.is_empty())
-            .or(config.current.clone())
-            .unwrap_or_else(|| "default".to_string());
-
-        if let Ok(Some(oauth)) = get_oauth_config(&profile) {
-            if !oauth.access_token.is_empty() {
-                return Ok(format!("Bearer {}", oauth.access_token));
-            }
         }
     }
 
@@ -430,7 +419,7 @@ pub fn get_oauth_config(profile: &str) -> Result<Option<OAuthConfig>> {
 pub fn clear_oauth_config(profile: &str) -> Result<()> {
     #[cfg(feature = "secure-storage")]
     {
-        let _ = crate::keyring::delete_oauth_tokens(profile);
+        crate::keyring::delete_oauth_tokens(profile)?;
     }
 
     let mut config = load_config()?;
