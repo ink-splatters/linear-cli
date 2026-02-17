@@ -112,8 +112,10 @@ async fn export_csv(
     let mut vars = serde_json::Map::new();
     vars.insert("filter".to_string(), filter);
 
-    let mut pagination = PaginationOptions::default();
-    pagination.page_size = Some(250);
+    let mut pagination = PaginationOptions {
+        page_size: Some(250),
+        ..Default::default()
+    };
     if all {
         pagination.all = true;
     } else {
@@ -251,8 +253,10 @@ async fn export_markdown(
     let mut vars = serde_json::Map::new();
     vars.insert("filter".to_string(), filter);
 
-    let mut pagination = PaginationOptions::default();
-    pagination.page_size = Some(250);
+    let mut pagination = PaginationOptions {
+        page_size: Some(250),
+        ..Default::default()
+    };
     if all {
         pagination.all = true;
     } else {

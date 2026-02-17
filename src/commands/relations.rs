@@ -22,7 +22,7 @@ pub enum RelationType {
 }
 
 impl RelationType {
-    fn to_api_string(&self) -> &'static str {
+    fn to_api_string(self) -> &'static str {
         match self {
             RelationType::Blocks => "blocks",
             RelationType::BlockedBy => "blockedBy",

@@ -1072,10 +1072,7 @@ fn setup_pager() -> Option<PagerGuard> {
         Err(_) => return None, // Pager not available, continue without it
     };
 
-    let child_stdin = match child.stdin.take() {
-        Some(stdin) => stdin,
-        None => return None,
-    };
+    let child_stdin = child.stdin.take()?;
 
     // Redirect stdout (fd 1) to the pager's stdin using dup2.
     #[cfg(unix)]

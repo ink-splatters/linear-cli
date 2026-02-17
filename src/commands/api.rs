@@ -138,8 +138,8 @@ async fn run_query(
             ..Default::default()
         };
 
-        let nodes_refs: Vec<&str> = nodes.iter().copied().collect();
-        let page_info_refs: Vec<&str> = page_info.iter().copied().collect();
+        let nodes_refs: Vec<&str> = nodes.to_vec();
+        let page_info_refs: Vec<&str> = page_info.to_vec();
 
         let results = paginate_nodes(
             &client,

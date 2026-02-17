@@ -240,12 +240,11 @@ async fn get_teams(ids: &[String], output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
 
     use futures::stream::{self, StreamExt};
-    let cache_opts = output.cache.clone();
+    let cache_opts = output.cache;
     let results: Vec<_> = stream::iter(ids.iter())
         .map(|id| {
             let client = client.clone();
             let id = id.clone();
-            let cache_opts = cache_opts.clone();
             async move {
                 let resolved = resolve_team_id(&client, &id, &cache_opts)
                     .await

@@ -320,6 +320,7 @@ pub async fn revoke_token(token: &str) -> Result<()> {
 }
 
 /// Check if OAuth tokens are expired (with 5-minute buffer)
+#[allow(dead_code)]
 pub fn is_expired(tokens: &OAuthTokens) -> bool {
     match tokens.expires_at {
         Some(expires_at) => {
