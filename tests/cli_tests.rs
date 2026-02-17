@@ -884,6 +884,16 @@ fn test_issues_list_newer_than_alias() {
     );
 }
 
+#[test]
+fn test_issues_get_history_flag() {
+    let (code, stdout, _stderr) = run_cli(&["issues", "get", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("--history"),
+        "issues get should have --history flag"
+    );
+}
+
 // === Milestone CRUD tests ===
 
 #[test]

@@ -71,6 +71,10 @@ pub enum IssueCommands {
     Get {
         /// Issue ID(s) or identifier(s). Use "-" to read from stdin.
         ids: Vec<String>,
+
+        /// Show recent activity history
+        #[arg(long)]
+        history: bool,
     },
     /// Create a new issue
     #[command(after_help = r#"EXAMPLES:
@@ -231,7 +235,7 @@ pub async fn handle(
             let assignee = if mine { Some("me".to_string()) } else { assignee };
             list_issues(team, state, assignee, project, label, view, since, archived, output, agent_opts).await
         }
-        IssueCommands::Get { ids } => {
+        IssueCommands::Get { ids, history } => {
             // Support reading from stdin if no IDs provided or if "-" is passed
             let final_ids = read_ids_from_stdin(ids);
             if final_ids.is_empty() {
@@ -239,7 +243,7 @@ pub async fn handle(
                     "No issue IDs provided. Provide IDs as arguments or pipe them via stdin."
                 );
             }
-            get_issues(&final_ids, output).await
+            get_issues(&final_ids, output, history).await
         }
         IssueCommands::Create {
             title,
@@ -645,10 +649,10 @@ async fn list_issues(
 }
 
 /// Get multiple issues (supports batch fetching with concurrency limit)
-async fn get_issues(ids: &[String], output: &OutputOptions) -> Result<()> {
+async fn get_issues(ids: &[String], output: &OutputOptions, history: bool) -> Result<()> {
     // Handle single ID (most common case)
     if ids.len() == 1 {
-        return get_issue(&ids[0], output).await;
+        return get_issue(&ids[0], output, history).await;
     }
 
     let client = LinearClient::new()?;
@@ -727,10 +731,138 @@ async fn get_issues(ids: &[String], output: &OutputOptions) -> Result<()> {
     Ok(())
 }
 
-async fn get_issue(id: &str, output: &OutputOptions) -> Result<()> {
+fn format_history_entry(entry: &serde_json::Value) -> String {
+    let mut parts = Vec::new();
+
+    // State change
+    if let (Some(from), Some(to)) = (
+        entry["fromState"]["name"].as_str(),
+        entry["toState"]["name"].as_str(),
+    ) {
+        parts.push(format!("Status: {} → {}", from, to));
+    }
+
+    // Assignee change
+    match (
+        entry["fromAssignee"]["name"].as_str(),
+        entry["toAssignee"]["name"].as_str(),
+    ) {
+        (Some(from), Some(to)) => parts.push(format!("Assignee: {} → {}", from, to)),
+        (None, Some(to)) => parts.push(format!("Assigned to {}", to)),
+        (Some(from), None) => parts.push(format!("Unassigned from {}", from)),
+        _ => {}
+    }
+
+    // Priority change
+    if let (Some(from), Some(to)) = (entry["fromPriority"].as_f64(), entry["toPriority"].as_f64()) {
+        let from_i = from as i64;
+        let to_i = to as i64;
+        if from_i != to_i {
+            parts.push(format!(
+                "Priority: {} → {}",
+                priority_to_string(Some(from_i)),
+                priority_to_string(Some(to_i))
+            ));
+        }
+    }
+
+    // Title change
+    if entry["fromTitle"].is_string() && entry["toTitle"].is_string() {
+        parts.push("Title updated".to_string());
+    }
+
+    // Description change
+    if entry["updatedDescription"].as_bool() == Some(true) {
+        parts.push("Description updated".to_string());
+    }
+
+    // Labels added/removed
+    if let Some(added) = entry["addedLabels"].as_array() {
+        if !added.is_empty() {
+            let names: Vec<&str> = added.iter().filter_map(|l| l["name"].as_str()).collect();
+            if !names.is_empty() {
+                parts.push(format!("Added labels: {}", names.join(", ")));
+            }
+        }
+    }
+    if let Some(removed) = entry["removedLabels"].as_array() {
+        if !removed.is_empty() {
+            let names: Vec<&str> = removed.iter().filter_map(|l| l["name"].as_str()).collect();
+            if !names.is_empty() {
+                parts.push(format!("Removed labels: {}", names.join(", ")));
+            }
+        }
+    }
+
+    // Project change
+    match (
+        entry["fromProject"]["name"].as_str(),
+        entry["toProject"]["name"].as_str(),
+    ) {
+        (Some(from), Some(to)) => parts.push(format!("Project: {} → {}", from, to)),
+        (None, Some(to)) => parts.push(format!("Added to project {}", to)),
+        (Some(from), None) => parts.push(format!("Removed from project {}", from)),
+        _ => {}
+    }
+
+    // Archive/trash
+    if entry["archived"].as_bool() == Some(true) {
+        parts.push("Archived".to_string());
+    }
+    if entry["trashed"].as_bool() == Some(true) {
+        parts.push("Trashed".to_string());
+    }
+
+    parts.join("; ")
+}
+
+async fn get_issue(id: &str, output: &OutputOptions, history: bool) -> Result<()> {
     let client = LinearClient::new()?;
 
-    let query = r#"
+    let query = if history {
+        r#"
+        query($id: String!) {
+            issue(id: $id) {
+                id
+                identifier
+                title
+                description
+                priority
+                url
+                createdAt
+                updatedAt
+                state { name }
+                team { name }
+                assignee { name email }
+                labels { nodes { name color } }
+                project { name }
+                parent { identifier title }
+                history(first: 15) {
+                    nodes {
+                        createdAt
+                        actor { name }
+                        fromState { name }
+                        toState { name }
+                        fromAssignee { name }
+                        toAssignee { name }
+                        fromPriority
+                        toPriority
+                        fromTitle
+                        toTitle
+                        updatedDescription
+                        addedLabels { name }
+                        removedLabels { name }
+                        fromProject { name }
+                        toProject { name }
+                        archived
+                        trashed
+                    }
+                }
+            }
+        }
+        "#
+    } else {
+        r#"
         query($id: String!) {
             issue(id: $id) {
                 id
@@ -749,7 +881,8 @@ async fn get_issue(id: &str, output: &OutputOptions) -> Result<()> {
                 parent { identifier title }
             }
         }
-    "#;
+        "#
+    };
 
     let result = client.query(query, Some(json!({ "id": id }))).await?;
     let issue = &result["data"]["issue"];
@@ -819,6 +952,25 @@ async fn get_issue(id: &str, output: &OutputOptions) -> Result<()> {
 
     println!("\nURL: {}", issue["url"].as_str().unwrap_or("-"));
     println!("ID:  {}", issue["id"].as_str().unwrap_or("-"));
+
+    // Display activity history if requested
+    if history {
+        if let Some(entries) = issue["history"]["nodes"].as_array() {
+            if !entries.is_empty() {
+                println!("\n{}", "Activity".bold());
+                println!("{}", "-".repeat(60));
+                for entry in entries {
+                    let ts = entry["createdAt"].as_str().unwrap_or("");
+                    let date = if ts.len() >= 10 { &ts[..10] } else { ts };
+                    let actor = entry["actor"]["name"].as_str().unwrap_or("System");
+                    let desc = format_history_entry(entry);
+                    if !desc.is_empty() {
+                        println!("  {} {} — {}", date.dimmed(), actor, desc);
+                    }
+                }
+            }
+        }
+    }
 
     Ok(())
 }
@@ -1529,4 +1681,92 @@ async fn stop_issue(id: &str, unassign: bool, agent_opts: AgentOptions) -> Resul
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_history_state_change() {
+        let entry = serde_json::json!({
+            "fromState": { "name": "Todo" },
+            "toState": { "name": "In Progress" }
+        });
+        assert_eq!(format_history_entry(&entry), "Status: Todo → In Progress");
+    }
+
+    #[test]
+    fn test_format_history_assignee_set() {
+        let entry = serde_json::json!({
+            "toAssignee": { "name": "Alice" }
+        });
+        assert_eq!(format_history_entry(&entry), "Assigned to Alice");
+    }
+
+    #[test]
+    fn test_format_history_assignee_changed() {
+        let entry = serde_json::json!({
+            "fromAssignee": { "name": "Alice" },
+            "toAssignee": { "name": "Bob" }
+        });
+        assert_eq!(format_history_entry(&entry), "Assignee: Alice → Bob");
+    }
+
+    #[test]
+    fn test_format_history_priority_change() {
+        let entry = serde_json::json!({
+            "fromPriority": 3.0,
+            "toPriority": 1.0
+        });
+        assert_eq!(format_history_entry(&entry), "Priority: Normal → Urgent");
+    }
+
+    #[test]
+    fn test_format_history_description_updated() {
+        let entry = serde_json::json!({
+            "updatedDescription": true
+        });
+        assert_eq!(format_history_entry(&entry), "Description updated");
+    }
+
+    #[test]
+    fn test_format_history_labels_added() {
+        let entry = serde_json::json!({
+            "addedLabels": [{ "name": "bug" }, { "name": "urgent" }]
+        });
+        assert_eq!(format_history_entry(&entry), "Added labels: bug, urgent");
+    }
+
+    #[test]
+    fn test_format_history_project_added() {
+        let entry = serde_json::json!({
+            "toProject": { "name": "FreshTrack" }
+        });
+        assert_eq!(format_history_entry(&entry), "Added to project FreshTrack");
+    }
+
+    #[test]
+    fn test_format_history_multiple_changes() {
+        let entry = serde_json::json!({
+            "fromState": { "name": "Todo" },
+            "toState": { "name": "Done" },
+            "updatedDescription": true
+        });
+        let result = format_history_entry(&entry);
+        assert!(result.contains("Status: Todo → Done"));
+        assert!(result.contains("Description updated"));
+    }
+
+    #[test]
+    fn test_format_history_empty() {
+        let entry = serde_json::json!({});
+        assert_eq!(format_history_entry(&entry), "");
+    }
+
+    #[test]
+    fn test_format_history_archived() {
+        let entry = serde_json::json!({ "archived": true });
+        assert_eq!(format_history_entry(&entry), "Archived");
+    }
 }
