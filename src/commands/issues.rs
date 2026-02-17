@@ -771,7 +771,7 @@ async fn get_issue(id: &str, output: &OutputOptions) -> Result<()> {
 
     if let Some(desc) = issue["description"].as_str() {
         if !desc.is_empty() {
-            println!("\n{}", desc);
+            println!("\n{}", crate::text::strip_markdown(desc));
             println!();
         }
     }
