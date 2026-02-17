@@ -230,6 +230,19 @@ pub enum IssueCommands {
         /// Issue ID or identifier
         id: String,
     },
+    /// Add a comment to an issue
+    Comment {
+        /// Issue ID or identifier
+        id: String,
+        /// Comment body (markdown). Use "-" to read from stdin.
+        #[arg(short, long)]
+        body: String,
+    },
+    /// Print the issue URL
+    Link {
+        /// Issue ID or identifier
+        id: String,
+    },
 }
 
 #[derive(Tabled)]
@@ -430,6 +443,8 @@ pub async fn handle(
         IssueCommands::Close { id } => close_issue(&id).await,
         IssueCommands::Archive { id } => archive_issue(&id, true).await,
         IssueCommands::Unarchive { id } => archive_issue(&id, false).await,
+        IssueCommands::Comment { id, body } => comment_issue(&id, &body).await,
+        IssueCommands::Link { id } => link_issue(&id).await,
     }
 }
 
@@ -1967,6 +1982,75 @@ async fn archive_issue(id: &str, archive: bool) -> Result<()> {
         anyhow::bail!("Failed to {} issue: {}", action, id);
     }
 
+    Ok(())
+}
+
+async fn comment_issue(id: &str, body: &str) -> Result<()> {
+    let client = LinearClient::new()?;
+
+    let actual_body = if body == "-" {
+        use std::io::Read;
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf)?;
+        buf
+    } else {
+        body.to_string()
+    };
+
+    if actual_body.trim().is_empty() {
+        anyhow::bail!("Comment body cannot be empty");
+    }
+
+    let mutation = r#"
+        mutation($input: CommentCreateInput!) {
+            commentCreate(input: $input) {
+                success
+                comment {
+                    id
+                    body
+                    issue { identifier }
+                }
+            }
+        }
+    "#;
+
+    let result = client
+        .mutate(mutation, Some(json!({ "input": { "issueId": id, "body": actual_body } })))
+        .await?;
+
+    if result["data"]["commentCreate"]["success"].as_bool() == Some(true) {
+        let comment = &result["data"]["commentCreate"]["comment"];
+        let issue_id = comment["issue"]["identifier"].as_str().unwrap_or(id);
+        println!("{} Added comment to {}", "+".green(), issue_id.cyan());
+    } else {
+        anyhow::bail!("Failed to add comment to issue: {}", id);
+    }
+
+    Ok(())
+}
+
+async fn link_issue(id: &str) -> Result<()> {
+    let client = LinearClient::new()?;
+    let query = r#"
+        query($id: String!) {
+            issue(id: $id) {
+                url
+            }
+        }
+    "#;
+    let result = client.query(query, Some(json!({ "id": id }))).await?;
+    let issue = &result["data"]["issue"];
+
+    if issue.is_null() {
+        anyhow::bail!("Issue not found: {}", id);
+    }
+
+    let url = issue["url"].as_str().unwrap_or("");
+    if url.is_empty() {
+        anyhow::bail!("No URL for issue: {}", id);
+    }
+
+    println!("{}", url);
     Ok(())
 }
 

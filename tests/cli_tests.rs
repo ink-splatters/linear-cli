@@ -984,6 +984,30 @@ fn test_issues_unarchive_help() {
     );
 }
 
+#[test]
+fn test_issues_comment_help() {
+    let (code, stdout, _stderr) = run_cli(&["issues", "comment", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("Add a comment"),
+        "issues comment should show help"
+    );
+    assert!(
+        stdout.contains("--body"),
+        "issues comment should accept --body flag"
+    );
+}
+
+#[test]
+fn test_issues_link_help() {
+    let (code, stdout, _stderr) = run_cli(&["issues", "link", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("Print the issue URL"),
+        "issues link should show help"
+    );
+}
+
 // === Milestone CRUD tests ===
 
 #[test]
