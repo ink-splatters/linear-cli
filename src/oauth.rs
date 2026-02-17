@@ -10,7 +10,7 @@ const LINEAR_TOKEN_URL: &str = "https://api.linear.app/oauth/token";
 const LINEAR_REVOKE_URL: &str = "https://api.linear.app/oauth/revoke";
 
 /// Default client_id for linear-cli OAuth app (registered with Linear)
-pub const DEFAULT_CLIENT_ID: &str = "linear-cli-default";
+pub const DEFAULT_CLIENT_ID: &str = "ce79a8dae43a317b06fbbeb297567bf9";
 
 /// PKCE challenge pair
 pub struct PkceChallenge {
