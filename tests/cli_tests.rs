@@ -894,6 +894,16 @@ fn test_issues_get_history_flag() {
     );
 }
 
+#[test]
+fn test_issues_get_comments_flag() {
+    let (code, stdout, _stderr) = run_cli(&["issues", "get", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("--comments"),
+        "issues get should have --comments flag"
+    );
+}
+
 // === Milestone CRUD tests ===
 
 #[test]

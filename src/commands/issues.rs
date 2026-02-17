@@ -75,6 +75,10 @@ pub enum IssueCommands {
         /// Show recent activity history
         #[arg(long)]
         history: bool,
+
+        /// Show comments
+        #[arg(long)]
+        comments: bool,
     },
     /// Create a new issue
     #[command(after_help = r#"EXAMPLES:
@@ -235,7 +239,7 @@ pub async fn handle(
             let assignee = if mine { Some("me".to_string()) } else { assignee };
             list_issues(team, state, assignee, project, label, view, since, archived, output, agent_opts).await
         }
-        IssueCommands::Get { ids, history } => {
+        IssueCommands::Get { ids, history, comments } => {
             // Support reading from stdin if no IDs provided or if "-" is passed
             let final_ids = read_ids_from_stdin(ids);
             if final_ids.is_empty() {
@@ -243,7 +247,7 @@ pub async fn handle(
                     "No issue IDs provided. Provide IDs as arguments or pipe them via stdin."
                 );
             }
-            get_issues(&final_ids, output, history).await
+            get_issues(&final_ids, output, history, comments).await
         }
         IssueCommands::Create {
             title,
@@ -649,10 +653,10 @@ async fn list_issues(
 }
 
 /// Get multiple issues (supports batch fetching with concurrency limit)
-async fn get_issues(ids: &[String], output: &OutputOptions, history: bool) -> Result<()> {
+async fn get_issues(ids: &[String], output: &OutputOptions, history: bool, comments: bool) -> Result<()> {
     // Handle single ID (most common case)
     if ids.len() == 1 {
-        return get_issue(&ids[0], output, history).await;
+        return get_issue(&ids[0], output, history, comments).await;
     }
 
     let client = LinearClient::new()?;
@@ -816,30 +820,11 @@ fn format_history_entry(entry: &serde_json::Value) -> String {
     parts.join("; ")
 }
 
-async fn get_issue(id: &str, output: &OutputOptions, history: bool) -> Result<()> {
+async fn get_issue(id: &str, output: &OutputOptions, history: bool, comments: bool) -> Result<()> {
     let client = LinearClient::new()?;
 
-    let query = if history {
+    let history_fragment = if history {
         r#"
-        query($id: String!) {
-            issue(id: $id) {
-                id
-                identifier
-                title
-                description
-                priority
-                url
-                createdAt
-                updatedAt
-                state { name }
-                team { name }
-                assignee { name email }
-                labels { nodes { name color } }
-                project { name }
-                parent { identifier title }
-                children { nodes { identifier title state { name } } }
-                dueDate
-                estimate
                 history(first: 15) {
                     nodes {
                         createdAt
@@ -860,14 +845,28 @@ async fn get_issue(id: &str, output: &OutputOptions, history: bool) -> Result<()
                         archived
                         trashed
                     }
-                }
-            }
-        }
-        "#
+                }"#
     } else {
+        ""
+    };
+
+    let comments_fragment = if comments {
         r#"
-        query($id: String!) {
-            issue(id: $id) {
+                comments(first: 20) {
+                    nodes {
+                        createdAt
+                        body
+                        user { name }
+                    }
+                }"#
+    } else {
+        ""
+    };
+
+    let query = format!(
+        r#"
+        query($id: String!) {{
+            issue(id: $id) {{
                 id
                 identifier
                 title
@@ -876,21 +875,24 @@ async fn get_issue(id: &str, output: &OutputOptions, history: bool) -> Result<()
                 url
                 createdAt
                 updatedAt
-                state { name }
-                team { name }
-                assignee { name email }
-                labels { nodes { name color } }
-                project { name }
-                parent { identifier title }
-                children { nodes { identifier title state { name } } }
+                state {{ name }}
+                team {{ name }}
+                assignee {{ name email }}
+                labels {{ nodes {{ name color }} }}
+                project {{ name }}
+                parent {{ identifier title }}
+                children {{ nodes {{ identifier title state {{ name }} }} }}
                 dueDate
                 estimate
-            }
-        }
-        "#
-    };
+                {}
+                {}
+            }}
+        }}
+        "#,
+        history_fragment, comments_fragment
+    );
 
-    let result = client.query(query, Some(json!({ "id": id }))).await?;
+    let result = client.query(&query, Some(json!({ "id": id }))).await?;
     let issue = &result["data"]["issue"];
 
     if issue.is_null() {
@@ -994,6 +996,28 @@ async fn get_issue(id: &str, output: &OutputOptions, history: bool) -> Result<()
                         println!("  {} {} — {}", date.dimmed(), actor, desc);
                     }
                 }
+            }
+        }
+    }
+
+    // Display comments if requested
+    if comments {
+        if let Some(comment_nodes) = issue["comments"]["nodes"].as_array() {
+            if !comment_nodes.is_empty() {
+                println!("\n{} ({}):", "Comments".bold(), comment_nodes.len());
+                println!("{}", "-".repeat(60));
+                for comment in comment_nodes {
+                    let ts = comment["createdAt"].as_str().unwrap_or("");
+                    let date = if ts.len() >= 10 { &ts[..10] } else { ts };
+                    let author = comment["user"]["name"].as_str().unwrap_or("Unknown");
+                    let body = comment["body"].as_str().unwrap_or("");
+                    println!("\n  {} {} {}:", date.dimmed(), "by".dimmed(), author.cyan());
+                    for line in crate::text::strip_markdown(body).lines() {
+                        println!("    {}", line);
+                    }
+                }
+            } else {
+                println!("\nNo comments.");
             }
         }
     }
