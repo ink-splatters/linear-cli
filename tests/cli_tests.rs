@@ -904,6 +904,16 @@ fn test_issues_get_comments_flag() {
     );
 }
 
+#[test]
+fn test_issues_open_help() {
+    let (code, stdout, _stderr) = run_cli(&["issues", "open", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("Open issue in browser"),
+        "issues open should show help"
+    );
+}
+
 // === Milestone CRUD tests ===
 
 #[test]

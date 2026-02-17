@@ -80,6 +80,11 @@ pub enum IssueCommands {
         #[arg(long)]
         comments: bool,
     },
+    /// Open issue in browser
+    Open {
+        /// Issue ID or identifier
+        id: String,
+    },
     /// Create a new issue
     #[command(after_help = r#"EXAMPLES:
     linear issues create "Fix bug" -t ENG      # Create with title and team
@@ -249,6 +254,7 @@ pub async fn handle(
             }
             get_issues(&final_ids, output, history, comments).await
         }
+        IssueCommands::Open { id } => open_issue(&id).await,
         IssueCommands::Create {
             title,
             team,
@@ -732,6 +738,34 @@ async fn get_issues(ids: &[String], output: &OutputOptions, history: bool, comme
         }
     }
 
+    Ok(())
+}
+
+async fn open_issue(id: &str) -> Result<()> {
+    let client = LinearClient::new()?;
+    let query = r#"
+        query($id: String!) {
+            issue(id: $id) {
+                identifier
+                url
+            }
+        }
+    "#;
+    let result = client.query(query, Some(json!({ "id": id }))).await?;
+    let issue = &result["data"]["issue"];
+
+    if issue.is_null() {
+        anyhow::bail!("Issue not found: {}", id);
+    }
+
+    let url = issue["url"].as_str().unwrap_or("");
+    if url.is_empty() {
+        anyhow::bail!("No URL for issue: {}", id);
+    }
+
+    let identifier = issue["identifier"].as_str().unwrap_or(id);
+    println!("Opening {} in browser...", identifier);
+    open::that(url)?;
     Ok(())
 }
 
