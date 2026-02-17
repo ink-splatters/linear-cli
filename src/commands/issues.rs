@@ -63,6 +63,9 @@ pub enum IssueCommands {
         /// Group output by field (state, priority, assignee)
         #[arg(long)]
         group_by: Option<String>,
+        /// Show only the count of matching issues
+        #[arg(long)]
+        count_only: bool,
     },
     /// Get issue details
     #[command(after_help = r#"EXAMPLES:
@@ -244,9 +247,10 @@ pub async fn handle(
             since,
             archived,
             group_by,
+            count_only,
         } => {
             let assignee = if mine { Some("me".to_string()) } else { assignee };
-            list_issues(team, state, assignee, project, label, view, since, archived, group_by, output, agent_opts).await
+            list_issues(team, state, assignee, project, label, view, since, archived, group_by, count_only, output, agent_opts).await
         }
         IssueCommands::Get { ids, history, comments } => {
             // Support reading from stdin if no IDs provided or if "-" is passed
@@ -421,6 +425,7 @@ async fn list_issues(
     since: Option<String>,
     include_archived: bool,
     group_by: Option<String>,
+    count_only: bool,
     output: &OutputOptions,
     _agent_opts: AgentOptions,
 ) -> Result<()> {
@@ -637,7 +642,16 @@ async fn list_issues(
 
     ensure_non_empty(&issues, output)?;
     if issues.is_empty() {
-        println!("No issues found.");
+        if count_only {
+            println!("0");
+        } else {
+            println!("No issues found.");
+        }
+        return Ok(());
+    }
+
+    if count_only {
+        println!("{}", issues.len());
         return Ok(());
     }
 

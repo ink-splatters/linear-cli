@@ -924,6 +924,26 @@ fn test_issues_list_group_by_flag() {
     );
 }
 
+#[test]
+fn test_issues_list_count_only_flag() {
+    let (code, stdout, _stderr) = run_cli(&["issues", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("--count-only"),
+        "issues list should have --count-only flag"
+    );
+}
+
+#[test]
+fn test_projects_open_help() {
+    let (code, stdout, _stderr) = run_cli(&["projects", "open", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("Open project in browser"),
+        "projects open should show help"
+    );
+}
+
 // === Milestone CRUD tests ===
 
 #[test]

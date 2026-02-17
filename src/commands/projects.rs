@@ -42,6 +42,11 @@ pub enum ProjectCommands {
         /// Project ID(s) or name(s). Use "-" to read from stdin.
         ids: Vec<String>,
     },
+    /// Open project in browser
+    Open {
+        /// Project ID or name
+        id: String,
+    },
     /// Create a new project
     #[command(after_help = r##"EXAMPLES:
     linear projects create "Q1 Roadmap" -t ENG # Create project
@@ -129,6 +134,7 @@ pub async fn handle(cmd: ProjectCommands, output: &OutputOptions) -> Result<()> 
             }
             get_projects(&final_ids, output).await
         }
+        ProjectCommands::Open { id } => open_project(&id, &output.cache).await,
         ProjectCommands::Create {
             name,
             team,
@@ -338,6 +344,36 @@ fn print_project_table(projects: &[serde_json::Value]) -> Result<()> {
     println!("{}", table);
     println!("\n{} projects", projects.len());
 
+    Ok(())
+}
+
+async fn open_project(id: &str, cache: &crate::cache::CacheOptions) -> Result<()> {
+    let client = LinearClient::new()?;
+    let resolved_id = resolve_project_id(&client, id, cache).await?;
+
+    let query = r#"
+        query($id: String!) {
+            project(id: $id) {
+                name
+                url
+            }
+        }
+    "#;
+    let result = client.query(query, Some(json!({ "id": resolved_id }))).await?;
+    let project = &result["data"]["project"];
+
+    if project.is_null() {
+        anyhow::bail!("Project not found: {}", id);
+    }
+
+    let url = project["url"].as_str().unwrap_or("");
+    if url.is_empty() {
+        anyhow::bail!("No URL for project: {}", id);
+    }
+
+    let name = project["name"].as_str().unwrap_or(id);
+    println!("Opening project '{}' in browser...", name);
+    open::that(url)?;
     Ok(())
 }
 
