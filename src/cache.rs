@@ -68,6 +68,7 @@ pub enum CacheType {
     Statuses,
     Labels,
     Projects,
+    Views,
 }
 
 impl CacheType {
@@ -79,6 +80,7 @@ impl CacheType {
             CacheType::Statuses => "statuses.json",
             CacheType::Labels => "labels.json",
             CacheType::Projects => "projects.json",
+            CacheType::Views => "views.json",
         }
     }
 
@@ -90,6 +92,7 @@ impl CacheType {
             CacheType::Statuses => "Statuses",
             CacheType::Labels => "Labels",
             CacheType::Projects => "Projects",
+            CacheType::Views => "Views",
         }
     }
 
@@ -101,6 +104,7 @@ impl CacheType {
             CacheType::Statuses,
             CacheType::Labels,
             CacheType::Projects,
+            CacheType::Views,
         ]
     }
 }
@@ -443,6 +447,7 @@ mod tests {
         assert_eq!(CacheType::Statuses.filename(), "statuses.json");
         assert_eq!(CacheType::Labels.filename(), "labels.json");
         assert_eq!(CacheType::Projects.filename(), "projects.json");
+        assert_eq!(CacheType::Views.filename(), "views.json");
     }
 
     #[test]
@@ -454,7 +459,7 @@ mod tests {
     #[test]
     fn test_cache_type_all() {
         let all = CacheType::all();
-        assert_eq!(all.len(), 5);
+        assert_eq!(all.len(), 6);
     }
 
     #[test]
