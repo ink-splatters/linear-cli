@@ -45,6 +45,9 @@ pub enum IssueCommands {
         /// Filter by project name
         #[arg(long)]
         project: Option<String>,
+        /// Apply a saved custom view's filters
+        #[arg(long)]
+        view: Option<String>,
         /// Include archived issues
         #[arg(long)]
         archived: bool,
@@ -210,8 +213,9 @@ pub async fn handle(
             state,
             assignee,
             project,
+            view,
             archived,
-        } => list_issues(team, state, assignee, project, archived, output, agent_opts).await,
+        } => list_issues(team, state, assignee, project, view, archived, output, agent_opts).await,
         IssueCommands::Get { ids } => {
             // Support reading from stdin if no IDs provided or if "-" is passed
             let final_ids = read_ids_from_stdin(ids);
@@ -379,13 +383,50 @@ async fn list_issues(
     state: Option<String>,
     assignee: Option<String>,
     project: Option<String>,
+    view: Option<String>,
     include_archived: bool,
     output: &OutputOptions,
     _agent_opts: AgentOptions,
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
-    let query = r#"
+    // If --view is specified, fetch the view's filterData and use it
+    let filter_data = if let Some(ref view_name) = view {
+        Some(super::views::fetch_view_filter(&client, view_name, &output.cache).await?)
+    } else {
+        None
+    };
+
+    let query = if filter_data.is_some() {
+        r#"
+        query($filter: IssueFilter, $includeArchived: Boolean, $first: Int, $after: String, $last: Int, $before: String) {
+            issues(
+                first: $first,
+                after: $after,
+                last: $last,
+                before: $before,
+                includeArchived: $includeArchived,
+                filter: $filter
+            ) {
+                nodes {
+                    id
+                    identifier
+                    title
+                    priority
+                    state { name }
+                    assignee { name }
+                }
+                pageInfo {
+                    hasNextPage
+                    endCursor
+                    hasPreviousPage
+                    startCursor
+                }
+            }
+        }
+    "#
+    } else {
+        r#"
         query($team: String, $state: String, $assignee: String, $project: String, $includeArchived: Boolean, $first: Int, $after: String, $last: Int, $before: String) {
             issues(
                 first: $first,
@@ -416,22 +457,27 @@ async fn list_issues(
                 }
             }
         }
-    "#;
+    "#
+    };
 
     let mut variables = Map::new();
     variables.insert("includeArchived".to_string(), json!(include_archived));
 
-    if let Some(t) = team {
-        variables.insert("team".to_string(), json!(t));
-    }
-    if let Some(s) = state {
-        variables.insert("state".to_string(), json!(s));
-    }
-    if let Some(a) = assignee {
-        variables.insert("assignee".to_string(), json!(a));
-    }
-    if let Some(p) = project {
-        variables.insert("project".to_string(), json!(p));
+    if let Some(ref fd) = filter_data {
+        variables.insert("filter".to_string(), fd.clone());
+    } else {
+        if let Some(t) = team {
+            variables.insert("team".to_string(), json!(t));
+        }
+        if let Some(s) = state {
+            variables.insert("state".to_string(), json!(s));
+        }
+        if let Some(a) = assignee {
+            variables.insert("assignee".to_string(), json!(a));
+        }
+        if let Some(p) = project {
+            variables.insert("project".to_string(), json!(p));
+        }
     }
 
     let pagination = output.pagination.with_default_limit(50);

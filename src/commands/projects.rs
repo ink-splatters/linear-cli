@@ -27,6 +27,9 @@ pub enum ProjectCommands {
         /// Show archived projects
         #[arg(short, long)]
         archived: bool,
+        /// Apply a saved custom view's project filters
+        #[arg(long)]
+        view: Option<String>,
     },
     /// Get project details
     #[command(after_help = r#"EXAMPLES:
@@ -118,7 +121,7 @@ struct ProjectRow {
 
 pub async fn handle(cmd: ProjectCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
-        ProjectCommands::List { archived } => list_projects(archived, output).await,
+        ProjectCommands::List { archived, view } => list_projects(archived, view, output).await,
         ProjectCommands::Get { ids } => {
             let final_ids = read_ids_from_stdin(ids);
             if final_ids.is_empty() {
@@ -148,7 +151,73 @@ pub async fn handle(cmd: ProjectCommands, output: &OutputOptions) -> Result<()> 
     }
 }
 
-async fn list_projects(include_archived: bool, output: &OutputOptions) -> Result<()> {
+async fn list_projects(
+    include_archived: bool,
+    view: Option<String>,
+    output: &OutputOptions,
+) -> Result<()> {
+    // If --view is specified, use the view's project filter
+    if let Some(ref view_name) = view {
+        let client = LinearClient::new()?;
+        let filter_data =
+            super::views::fetch_view_project_filter(&client, view_name, &output.cache).await?;
+
+        let query = r#"
+            query($filter: ProjectFilter, $includeArchived: Boolean, $first: Int, $after: String, $last: Int, $before: String) {
+                projects(first: $first, after: $after, last: $last, before: $before, includeArchived: $includeArchived, filter: $filter) {
+                    nodes {
+                        id
+                        name
+                        state
+                        url
+                        startDate
+                        targetDate
+                    }
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                        hasPreviousPage
+                        startCursor
+                    }
+                }
+            }
+        "#;
+
+        let mut vars = serde_json::Map::new();
+        vars.insert("includeArchived".to_string(), json!(include_archived));
+        vars.insert("filter".to_string(), filter_data);
+
+        let pagination = output.pagination.with_default_limit(50);
+        let mut projects = paginate_nodes(
+            &client,
+            query,
+            vars,
+            &["data", "projects", "nodes"],
+            &["data", "projects", "pageInfo"],
+            &pagination,
+            50,
+        )
+        .await?;
+
+        if output.is_json() || output.has_template() {
+            print_json_owned(serde_json::json!(projects), output)?;
+            return Ok(());
+        }
+
+        filter_values(&mut projects, &output.filters);
+        if let Some(sort_key) = output.json.sort.as_deref() {
+            sort_values(&mut projects, sort_key, output.json.order);
+        }
+
+        ensure_non_empty(&projects, output)?;
+        if projects.is_empty() {
+            println!("No projects found matching view filters.");
+            return Ok(());
+        }
+
+        return print_project_table(&projects);
+    }
+
     let can_use_cache = !output.cache.no_cache
         && !include_archived
         && output.pagination.after.is_none()
@@ -233,6 +302,26 @@ async fn list_projects(include_archived: bool, output: &OutputOptions) -> Result
         return Ok(());
     }
 
+    let width = display_options().max_width(50);
+    let rows: Vec<ProjectRow> = projects
+        .iter()
+        .filter_map(|v| serde_json::from_value::<Project>(v.clone()).ok())
+        .map(|p| ProjectRow {
+            name: truncate(&p.name, width),
+            status: p.state.unwrap_or_else(|| "-".to_string()),
+            labels: "-".to_string(),
+            id: p.id,
+        })
+        .collect();
+
+    let table = Table::new(rows).to_string();
+    println!("{}", table);
+    println!("\n{} projects", projects.len());
+
+    Ok(())
+}
+
+fn print_project_table(projects: &[serde_json::Value]) -> Result<()> {
     let width = display_options().max_width(50);
     let rows: Vec<ProjectRow> = projects
         .iter()
