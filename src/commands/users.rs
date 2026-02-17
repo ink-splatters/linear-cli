@@ -4,8 +4,8 @@ use colored::Colorize;
 use serde_json::{json, Value};
 use tabled::{Table, Tabled};
 
-use crate::api::{resolve_team_id, LinearClient};
-use crate::cache::{Cache, CacheType};
+use crate::api::{resolve_team_id, resolve_user_id, LinearClient};
+use crate::cache::{Cache, CacheOptions, CacheType};
 use crate::display_options;
 use crate::output::{
     ensure_non_empty, filter_values, print_json, print_json_owned, sort_values, OutputOptions,
@@ -25,6 +25,11 @@ pub enum UserCommands {
     },
     /// Show current user details
     Me,
+    /// Get user details by name, email, or ID
+    Get {
+        /// User name, email, or ID
+        user: String,
+    },
 }
 
 #[derive(Tabled)]
@@ -41,6 +46,7 @@ pub async fn handle(cmd: UserCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
         UserCommands::List { team } => list_users(team, output).await,
         UserCommands::Me => get_me(output).await,
+        UserCommands::Get { user } => get_user(&user, output).await,
     }
 }
 
@@ -243,6 +249,78 @@ async fn get_me(output: &OutputOptions) -> Result<()> {
 
     println!("URL: {}", viewer.url.as_deref().unwrap_or("-"));
     println!("ID: {}", viewer.id);
+
+    Ok(())
+}
+
+async fn get_user(user: &str, output: &OutputOptions) -> Result<()> {
+    let client = LinearClient::new()?;
+    let user_id = resolve_user_id(&client, user, &CacheOptions::default()).await?;
+
+    let query = r#"
+        query($id: String!) {
+            user(id: $id) {
+                id
+                name
+                email
+                displayName
+                avatarUrl
+                admin
+                active
+                createdAt
+                url
+            }
+        }
+    "#;
+
+    let result = client
+        .query(query, Some(json!({ "id": user_id })))
+        .await?;
+    let raw = &result["data"]["user"];
+
+    if raw.is_null() {
+        anyhow::bail!("User not found: {}", user);
+    }
+
+    if output.is_json() || output.has_template() {
+        print_json(raw, output)?;
+        return Ok(());
+    }
+
+    let name = raw["name"].as_str().unwrap_or("");
+    println!("{}", name.bold());
+    println!("{}", "-".repeat(40));
+
+    if let Some(display_name) = raw["displayName"].as_str() {
+        if !display_name.is_empty() && display_name != name {
+            println!("Display Name: {}", display_name);
+        }
+    }
+
+    println!("Email: {}", raw["email"].as_str().unwrap_or("-"));
+    println!(
+        "Admin: {}",
+        if raw["admin"].as_bool() == Some(true) {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+    println!(
+        "Active: {}",
+        if raw["active"].as_bool() == Some(true) {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+
+    if let Some(created) = raw["createdAt"].as_str() {
+        println!("Created: {}", &created[..10]);
+    }
+
+    println!("URL: {}", raw["url"].as_str().unwrap_or("-"));
+    println!("ID: {}", raw["id"].as_str().unwrap_or(""));
 
     Ok(())
 }
