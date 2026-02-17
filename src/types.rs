@@ -437,6 +437,65 @@ pub struct Viewer {
     pub created_at: Option<String>,
 }
 
+/// A custom view in Linear.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomView {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub shared: bool,
+    #[serde(default)]
+    pub slug_id: Option<String>,
+    #[serde(default)]
+    pub model_name: Option<String>,
+    #[serde(default)]
+    pub filter_data: Option<serde_json::Value>,
+    #[serde(default)]
+    pub project_filter_data: Option<serde_json::Value>,
+    #[serde(default)]
+    pub owner: Option<User>,
+    #[serde(default)]
+    pub team: Option<Team>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// A webhook in Linear.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Webhook {
+    pub id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub secret: Option<String>,
+    #[serde(default)]
+    pub resource_types: Vec<String>,
+    #[serde(default)]
+    pub all_public_teams: bool,
+    #[serde(default)]
+    pub team: Option<Team>,
+    #[serde(default)]
+    pub creator: Option<User>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
 /// Organization info.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -984,5 +1043,88 @@ mod tests {
         assert_eq!(org.name, "Org");
         assert!(org.url_key.is_none());
         assert!(org.logo_url.is_none());
+    }
+
+    // --- CustomView tests ---
+
+    #[test]
+    fn test_custom_view_deserialize() {
+        let json = r#"{
+            "id": "view1",
+            "name": "Bug Triage",
+            "description": "All open bugs",
+            "shared": true,
+            "slugId": "bug-triage",
+            "modelName": "Issue",
+            "filterData": {"state": {"name": {"in": ["Todo", "In Progress"]}}},
+            "owner": {"id": "user1", "name": "Alice", "key": "A"},
+            "team": {"id": "team1", "key": "ENG", "name": "Engineering"},
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-06-15T10:00:00Z"
+        }"#;
+        let view: CustomView = serde_json::from_str(json).unwrap();
+        assert_eq!(view.id, "view1");
+        assert_eq!(view.name, "Bug Triage");
+        assert_eq!(view.description.as_deref(), Some("All open bugs"));
+        assert!(view.shared);
+        assert_eq!(view.slug_id.as_deref(), Some("bug-triage"));
+        assert_eq!(view.model_name.as_deref(), Some("Issue"));
+        assert!(view.filter_data.is_some());
+        assert_eq!(view.owner.as_ref().unwrap().name, "Alice");
+        assert_eq!(view.team.as_ref().unwrap().key, "ENG");
+    }
+
+    #[test]
+    fn test_custom_view_minimal() {
+        let json = r#"{"id": "view1", "name": "My View"}"#;
+        let view: CustomView = serde_json::from_str(json).unwrap();
+        assert_eq!(view.id, "view1");
+        assert_eq!(view.name, "My View");
+        assert!(!view.shared);
+        assert!(view.description.is_none());
+        assert!(view.filter_data.is_none());
+        assert!(view.owner.is_none());
+        assert!(view.team.is_none());
+    }
+
+    // --- Webhook tests ---
+
+    #[test]
+    fn test_webhook_deserialize() {
+        let json = r#"{
+            "id": "wh1",
+            "label": "Slack Notifications",
+            "url": "https://hooks.slack.com/xxx",
+            "enabled": true,
+            "secret": "whsec_abc123",
+            "resourceTypes": ["Issue", "Comment"],
+            "allPublicTeams": false,
+            "team": {"id": "team1", "key": "ENG", "name": "Engineering"},
+            "creator": {"id": "user1", "name": "Bob"},
+            "createdAt": "2024-03-01T12:00:00Z",
+            "updatedAt": "2024-03-05T15:00:00Z"
+        }"#;
+        let wh: Webhook = serde_json::from_str(json).unwrap();
+        assert_eq!(wh.id, "wh1");
+        assert_eq!(wh.label.as_deref(), Some("Slack Notifications"));
+        assert_eq!(wh.url.as_deref(), Some("https://hooks.slack.com/xxx"));
+        assert!(wh.enabled);
+        assert_eq!(wh.resource_types, vec!["Issue", "Comment"]);
+        assert!(!wh.all_public_teams);
+        assert_eq!(wh.team.as_ref().unwrap().key, "ENG");
+        assert_eq!(wh.creator.as_ref().unwrap().name, "Bob");
+    }
+
+    #[test]
+    fn test_webhook_minimal() {
+        let json = r#"{"id": "wh1"}"#;
+        let wh: Webhook = serde_json::from_str(json).unwrap();
+        assert_eq!(wh.id, "wh1");
+        assert!(!wh.enabled);
+        assert!(wh.label.is_none());
+        assert!(wh.url.is_none());
+        assert!(wh.resource_types.is_empty());
+        assert!(wh.team.is_none());
+        assert!(wh.creator.is_none());
     }
 }
