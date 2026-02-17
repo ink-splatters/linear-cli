@@ -24,7 +24,7 @@ use clap_complete::{generate, Shell};
 use commands::{
     auth, bulk, comments, cycles, doctor, documents, export, favorites, git, history, initiatives,
     interactive, issues, labels, metrics, notifications, projects, relations, roadmaps, search,
-    statuses, sync, teams, templates, time, triage, uploads, users, watch,
+    statuses, sync, teams, templates, time, triage, uploads, users, views, watch, webhooks,
 };
 use error::CliError;
 use output::print_json_owned;
@@ -555,6 +555,30 @@ Detects issue ID from branch names like:
         #[command(subcommand)]
         action: history::HistoryCommands,
     },
+    /// Manage custom views - create, apply, and manage saved views
+    #[command(alias = "v")]
+    #[command(after_help = r#"EXAMPLES:
+    linear views list                       # List all custom views
+    linear v list --shared                  # List shared views only
+    linear v get "My View"                  # View details
+    linear v create "Bug Triage" --shared   # Create a shared view
+    linear v delete VIEW_ID --force         # Delete a view"#)]
+    Views {
+        #[command(subcommand)]
+        action: views::ViewCommands,
+    },
+    /// Manage webhooks - create, update, delete, listen for events
+    #[command(alias = "wh")]
+    #[command(after_help = r#"EXAMPLES:
+    linear webhooks list                    # List all webhooks
+    linear wh create URL --events Issue     # Create webhook
+    linear wh delete WEBHOOK_ID --force     # Delete webhook
+    linear wh rotate-secret WEBHOOK_ID      # Rotate webhook secret
+    linear wh listen --port 9000            # Listen for events locally"#)]
+    Webhooks {
+        #[command(subcommand)]
+        action: webhooks::WebhookCommands,
+    },
     /// Watch for updates (polling)
     #[command(after_help = r#"EXAMPLES:
     linear watch issue LIN-123             # Watch single issue
@@ -903,6 +927,8 @@ async fn run_command(
         Commands::Metrics { action } => metrics::handle(action, output).await?,
         Commands::Export { action } => export::handle(action, output).await?,
         Commands::History { action } => history::handle(action, output).await?,
+        Commands::Views { action } => views::handle(action, output).await?,
+        Commands::Webhooks { action } => webhooks::handle(action, output).await?,
         Commands::Watch { action } => match action {
             WatchCommands::Issue { id, interval } => {
                 watch::watch_issue(&id, interval, output).await?

@@ -27,4 +27,6 @@ pub mod time;
 pub mod triage;
 pub mod uploads;
 pub mod users;
+pub mod views;
 pub mod watch;
+pub mod webhooks;
