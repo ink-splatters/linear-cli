@@ -15,6 +15,7 @@ pub mod interactive;
 pub mod issues;
 pub mod labels;
 pub mod metrics;
+pub mod milestones;
 pub mod notifications;
 pub mod projects;
 pub mod relations;

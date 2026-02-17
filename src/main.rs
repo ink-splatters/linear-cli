@@ -545,6 +545,18 @@ Detects issue ID from branch names like:
         #[command(subcommand)]
         action: metrics::MetricsCommands,
     },
+    /// Manage project milestones - list, create, update, delete milestones
+    #[command(alias = "ms")]
+    #[command(after_help = r#"EXAMPLES:
+    linear milestones list -p "My Project"  # List milestones
+    linear ms get MILESTONE_ID              # View milestone details
+    linear ms create "Beta Release" -p PROJ # Create milestone
+    linear ms update ID --target-date +2w   # Update target date
+    linear ms delete ID --force             # Delete milestone"#)]
+    Milestones {
+        #[command(subcommand)]
+        action: commands::milestones::MilestoneCommands,
+    },
     /// Export issues to CSV or Markdown
     #[command(alias = "exp")]
     #[command(after_help = r#"EXAMPLES:
@@ -937,6 +949,7 @@ async fn run_command(
         }
         Commands::Triage { action } => triage::handle(action, output).await?,
         Commands::Metrics { action } => metrics::handle(action, output).await?,
+        Commands::Milestones { action } => commands::milestones::handle(action, output).await?,
         Commands::Export { action } => export::handle(action, output).await?,
         Commands::History { action } => history::handle(action, output).await?,
         Commands::Views { action } => views::handle(action, output).await?,
