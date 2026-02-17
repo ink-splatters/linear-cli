@@ -277,6 +277,15 @@ enum Commands {
         #[arg(long)]
         check_api: bool,
     },
+    /// Execute raw GraphQL queries and mutations against the Linear API
+    #[command(after_help = r#"EXAMPLES:
+    linear api query '{ viewer { id name } }'
+    linear api query -v teamId=abc '...'     # With variables
+    linear api mutate -v title=Bug '...'     # Run mutations"#)]
+    Api {
+        #[command(subcommand)]
+        action: commands::api::ApiCommands,
+    },
     /// Manage projects - list, create, update, delete projects
     #[command(alias = "p")]
     #[command(after_help = r#"EXAMPLES:
@@ -946,6 +955,7 @@ async fn run_command(
         Commands::Relations { action } => relations::handle(action, output).await?,
         Commands::Whoami => users::handle(users::UserCommands::Me, output).await?,
         Commands::Auth { action } => auth::handle(action, output).await?,
+        Commands::Api { action } => commands::api::handle(action, output).await?,
         Commands::Doctor { check_api } => doctor::run(output, check_api).await?,
         Commands::Config { action } => match action {
             ConfigCommands::SetKey { key } => {
