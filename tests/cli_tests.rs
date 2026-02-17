@@ -52,6 +52,17 @@ fn test_teams_help() {
     let (code, stdout, _stderr) = run_cli(&["teams", "--help"]);
     assert_eq!(code, 0);
     assert!(stdout.contains("list"));
+    assert!(stdout.contains("members"));
+}
+
+#[test]
+fn test_teams_members_help() {
+    let (code, stdout, _stderr) = run_cli(&["teams", "members", "--help"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("List members"),
+        "teams members should show help"
+    );
 }
 
 #[test]

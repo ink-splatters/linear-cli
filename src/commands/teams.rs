@@ -25,6 +25,11 @@ pub enum TeamCommands {
         /// Team ID(s), key(s), or name(s). Use "-" to read from stdin.
         ids: Vec<String>,
     },
+    /// List members of a team
+    Members {
+        /// Team key, name, or ID (e.g., "ENG")
+        team: String,
+    },
 }
 
 #[derive(Tabled)]
@@ -47,6 +52,7 @@ pub async fn handle(cmd: TeamCommands, output: &OutputOptions) -> Result<()> {
             }
             get_teams(&final_ids, output).await
         }
+        TeamCommands::Members { team } => list_members(&team, output).await,
     }
 }
 
@@ -305,6 +311,106 @@ async fn get_teams(ids: &[String], output: &OutputOptions) -> Result<()> {
             }
         }
     }
+
+    Ok(())
+}
+
+#[derive(Tabled)]
+struct MemberRow {
+    #[tabled(rename = "Name")]
+    name: String,
+    #[tabled(rename = "Email")]
+    email: String,
+    #[tabled(rename = "Role")]
+    role: String,
+    #[tabled(rename = "Active")]
+    active: String,
+}
+
+async fn list_members(team: &str, output: &OutputOptions) -> Result<()> {
+    let client = LinearClient::new()?;
+    let team_id = resolve_team_id(&client, team, &output.cache).await?;
+
+    let query = r#"
+        query($id: String!) {
+            team(id: $id) {
+                name
+                members {
+                    nodes {
+                        id
+                        name
+                        email
+                        admin
+                        active
+                        displayName
+                    }
+                }
+            }
+        }
+    "#;
+
+    let result = client
+        .query(query, Some(json!({ "id": team_id })))
+        .await?;
+    let team_data = &result["data"]["team"];
+
+    if team_data.is_null() {
+        anyhow::bail!("Team not found: {}", team);
+    }
+
+    let members = team_data["members"]["nodes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    if output.is_json() || output.has_template() {
+        print_json_owned(serde_json::json!(members), output)?;
+        return Ok(());
+    }
+
+    let mut members = members;
+    filter_values(&mut members, &output.filters);
+
+    if let Some(sort_key) = output.json.sort.as_deref() {
+        sort_values(&mut members, sort_key, output.json.order);
+    }
+
+    ensure_non_empty(&members, output)?;
+    if members.is_empty() {
+        println!("No members found.");
+        return Ok(());
+    }
+
+    let team_name = team_data["name"].as_str().unwrap_or(team);
+    let width = display_options().max_width(30);
+    let rows: Vec<MemberRow> = members
+        .iter()
+        .map(|m| MemberRow {
+            name: truncate(
+                m["displayName"]
+                    .as_str()
+                    .or_else(|| m["name"].as_str())
+                    .unwrap_or(""),
+                width,
+            ),
+            email: m["email"].as_str().unwrap_or("").to_string(),
+            role: if m["admin"].as_bool() == Some(true) {
+                "Admin".to_string()
+            } else {
+                "Member".to_string()
+            },
+            active: if m["active"].as_bool() == Some(true) {
+                "Yes".to_string()
+            } else {
+                "No".to_string()
+            },
+        })
+        .collect();
+
+    let table = Table::new(rows).to_string();
+    println!("Team: {}\n", team_name.bold());
+    println!("{}", table);
+    println!("\n{} members", members.len());
 
     Ok(())
 }
