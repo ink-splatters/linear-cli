@@ -42,9 +42,15 @@ pub enum IssueCommands {
         /// Filter by assignee (user ID, name, email, or "me")
         #[arg(short, long)]
         assignee: Option<String>,
+        /// Show only my assigned issues (shortcut for --assignee me)
+        #[arg(long)]
+        mine: bool,
         /// Filter by project name
         #[arg(long)]
         project: Option<String>,
+        /// Filter by label name
+        #[arg(short, long)]
+        label: Option<String>,
         /// Apply a saved custom view's filters
         #[arg(long)]
         view: Option<String>,
@@ -215,11 +221,16 @@ pub async fn handle(
             team,
             state,
             assignee,
+            mine,
             project,
+            label,
             view,
             since,
             archived,
-        } => list_issues(team, state, assignee, project, view, since, archived, output, agent_opts).await,
+        } => {
+            let assignee = if mine { Some("me".to_string()) } else { assignee };
+            list_issues(team, state, assignee, project, label, view, since, archived, output, agent_opts).await
+        }
         IssueCommands::Get { ids } => {
             // Support reading from stdin if no IDs provided or if "-" is passed
             let final_ids = read_ids_from_stdin(ids);
@@ -387,6 +398,7 @@ async fn list_issues(
     state: Option<String>,
     assignee: Option<String>,
     project: Option<String>,
+    label: Option<String>,
     view: Option<String>,
     since: Option<String>,
     include_archived: bool,
@@ -411,8 +423,8 @@ async fn list_issues(
         None
     };
 
-    // Determine if we need filter-based query (--view or --since)
-    let use_filter_query = filter_data.is_some() || since_date.is_some();
+    // Determine if we need filter-based query (--view or --since or --label)
+    let use_filter_query = filter_data.is_some() || since_date.is_some() || label.is_some();
 
     let query = if use_filter_query {
         r#"
@@ -509,8 +521,13 @@ async fn list_issues(
                 obj.insert("project".to_string(), json!({ "name": { "eqIgnoreCase": p } }));
             }
         }
+        if let Some(ref l) = label {
+            if let Some(obj) = filter.as_object_mut() {
+                obj.insert("labels".to_string(), json!({ "name": { "eqIgnoreCase": l } }));
+            }
+        }
         variables.insert("filter".to_string(), filter);
-    } else if since_date.is_some() {
+    } else if since_date.is_some() || label.is_some() {
         // Build filter from --since and CLI filters (no view)
         let mut filter = json!({});
         if let Some(ref since_ts) = since_date {
@@ -527,6 +544,9 @@ async fn list_issues(
         }
         if let Some(p) = project {
             filter["project"] = json!({ "name": { "eqIgnoreCase": p } });
+        }
+        if let Some(ref l) = label {
+            filter["labels"] = json!({ "name": { "eqIgnoreCase": l } });
         }
         variables.insert("filter".to_string(), filter);
     } else {
