@@ -5,6 +5,7 @@ use serde_json::json;
 
 use crate::api::LinearClient;
 use crate::config;
+use crate::oauth;
 use crate::output::{print_json_owned, OutputOptions};
 
 #[derive(Subcommand)]
@@ -43,6 +44,27 @@ pub enum AuthCommands {
         #[arg(long)]
         force: bool,
     },
+    /// Authenticate via OAuth 2.0 (browser-based)
+    Oauth {
+        /// OAuth client ID (uses default if not specified)
+        #[arg(long)]
+        client_id: Option<String>,
+        /// OAuth scopes (comma-separated)
+        #[arg(long, default_value = "read,write")]
+        scopes: String,
+        /// Port for localhost callback server
+        #[arg(long, default_value = "8484")]
+        port: u16,
+        /// Store tokens in OS keyring instead of config file
+        #[arg(long)]
+        secure: bool,
+    },
+    /// Revoke OAuth tokens for the current profile
+    Revoke {
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 pub async fn handle(cmd: AuthCommands, output: &OutputOptions) -> Result<()> {
@@ -56,6 +78,13 @@ pub async fn handle(cmd: AuthCommands, output: &OutputOptions) -> Result<()> {
         AuthCommands::Status { validate } => status(validate, output).await,
         #[cfg(feature = "secure-storage")]
         AuthCommands::Migrate { keep_config, force } => migrate(keep_config, force, output).await,
+        AuthCommands::Oauth {
+            client_id,
+            scopes,
+            port,
+            secure,
+        } => oauth_login(client_id, scopes, port, secure, output).await,
+        AuthCommands::Revoke { force } => revoke(force, output).await,
     }
 }
 
@@ -189,6 +218,14 @@ async fn status(validate: bool, output: &OutputOptions) -> Result<()> {
     #[cfg(not(feature = "secure-storage"))]
     let keyring_available = false;
 
+    // Check OAuth config
+    let oauth_config = profile
+        .as_ref()
+        .and_then(|p| config::get_oauth_config(p).ok())
+        .flatten();
+    let oauth_configured = oauth_config.is_some();
+    let auth_type = if oauth_configured { "oauth" } else { "api_key" };
+
     let mut validated = None;
     if validate {
         // Try to get key using the priority: env > keyring > config
@@ -217,6 +254,10 @@ async fn status(validate: bool, output: &OutputOptions) -> Result<()> {
                 "configured": configured,
                 "keyring_configured": keyring_configured,
                 "keyring_available": keyring_available,
+                "auth_type": auth_type,
+                "oauth_configured": oauth_configured,
+                "oauth_scopes": oauth_config.as_ref().map(|o| &o.scopes),
+                "oauth_expires_at": oauth_config.as_ref().and_then(|o| o.expires_at),
                 "env_api_key": env_key.is_some(),
                 "env_profile": env_profile,
                 "validated": validated,
@@ -242,6 +283,16 @@ async fn status(validate: bool, output: &OutputOptions) -> Result<()> {
     );
     if let Some(validated) = validated {
         println!("Validated: {}", if validated { "yes" } else { "no" });
+    }
+    println!("Auth type: {}", auth_type);
+    if let Some(ref oauth) = oauth_config {
+        println!("OAuth scopes: {:?}", oauth.scopes);
+        if let Some(expires) = oauth.expires_at {
+            let dt = chrono::DateTime::from_timestamp(expires, 0)
+                .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            println!("OAuth expires: {}", dt);
+        }
     }
 
     Ok(())
@@ -369,5 +420,176 @@ async fn migrate(keep_config: bool, force: bool, output: &OutputOptions) -> Resu
         println!("API keys removed from config file.");
     }
 
+    Ok(())
+}
+
+async fn oauth_login(
+    client_id: Option<String>,
+    scopes: String,
+    port: u16,
+    secure: bool,
+    output: &OutputOptions,
+) -> Result<()> {
+    let client_id = client_id.unwrap_or_else(|| oauth::DEFAULT_CLIENT_ID.to_string());
+    let redirect_uri = format!("http://localhost:{}/callback", port);
+
+    // Generate PKCE challenge and state
+    let pkce = oauth::PkceChallenge::generate();
+    let state = oauth::generate_state();
+
+    // Build authorization URL
+    let authorize_url = oauth::build_authorize_url(&client_id, &redirect_uri, &scopes, &state, &pkce);
+
+    println!("Opening browser for Linear OAuth authentication...");
+    println!("If the browser doesn't open, visit this URL:");
+    println!("{}", authorize_url);
+    println!();
+
+    // Open browser
+    if let Err(e) = open::that(&authorize_url) {
+        eprintln!("Failed to open browser: {}. Please open the URL above manually.", e);
+    }
+
+    // Wait for callback
+    println!("Waiting for authorization callback on port {}...", port);
+    let code = oauth::wait_for_callback(port, &state).await?;
+
+    // Exchange code for tokens
+    println!("Exchanging authorization code for tokens...");
+    let tokens = oauth::exchange_code(&client_id, &redirect_uri, &code, &pkce.verifier).await?;
+
+    // Validate the tokens by querying the viewer
+    let client = LinearClient::with_api_key(format!("Bearer {}", tokens.access_token))?;
+    let query = r#"query { viewer { id name email } }"#;
+    let result = client.query(query, None).await?;
+    let viewer = &result["data"]["viewer"];
+    if viewer.is_null() {
+        anyhow::bail!("OAuth token validation failed - could not fetch user info");
+    }
+
+    let user_name = viewer["name"].as_str().unwrap_or("Unknown");
+    let user_email = viewer["email"].as_str().unwrap_or("Unknown");
+
+    // Save tokens
+    let profile = resolve_profile_for_write()?;
+    let scopes_vec: Vec<String> = scopes.split(',').map(|s| s.trim().to_string()).collect();
+
+    let oauth_config = config::OAuthConfig {
+        client_id: client_id.clone(),
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_at: tokens.expires_at,
+        token_type: tokens.token_type,
+        scopes: scopes_vec.clone(),
+    };
+
+    #[cfg(feature = "secure-storage")]
+    if secure {
+        let json = serde_json::to_string(&oauth_config)?;
+        crate::keyring::set_oauth_tokens(&profile, &json)?;
+        // Also save a minimal version in config (without sensitive tokens)
+        config::save_oauth_config(&profile, &oauth_config)?;
+
+        if output.is_json() || output.has_template() {
+            print_json_owned(
+                json!({
+                    "profile": profile,
+                    "auth_type": "oauth",
+                    "user": user_name,
+                    "email": user_email,
+                    "scopes": scopes_vec,
+                    "storage": "keyring",
+                    "saved": true,
+                }),
+                output,
+            )?;
+            return Ok(());
+        }
+
+        println!();
+        println!("OAuth authentication successful!");
+        println!("  User: {} ({})", user_name, user_email);
+        println!("  Scopes: {}", scopes);
+        println!("  Tokens saved to keyring for profile '{}'", profile);
+        return Ok(());
+    }
+
+    #[cfg(not(feature = "secure-storage"))]
+    if secure {
+        anyhow::bail!("Secure storage requires the 'secure-storage' feature. Rebuild with: cargo build --features secure-storage");
+    }
+
+    config::save_oauth_config(&profile, &oauth_config)?;
+
+    if output.is_json() || output.has_template() {
+        print_json_owned(
+            json!({
+                "profile": profile,
+                "auth_type": "oauth",
+                "user": user_name,
+                "email": user_email,
+                "scopes": scopes_vec,
+                "storage": "config",
+                "saved": true,
+            }),
+            output,
+        )?;
+        return Ok(());
+    }
+
+    println!();
+    println!("OAuth authentication successful!");
+    println!("  User: {} ({})", user_name, user_email);
+    println!("  Scopes: {}", scopes);
+    println!("  Tokens saved to config for profile '{}'", profile);
+
+    Ok(())
+}
+
+async fn revoke(force: bool, output: &OutputOptions) -> Result<()> {
+    let profile = config::current_profile()?;
+
+    let oauth_config = config::get_oauth_config(&profile)?;
+    let oauth_config = match oauth_config {
+        Some(c) => c,
+        None => {
+            anyhow::bail!("No OAuth tokens found for profile '{}'. Use 'auth oauth' to authenticate.", profile);
+        }
+    };
+
+    if !force {
+        let confirmed = Confirm::new()
+            .with_prompt(format!(
+                "Revoke OAuth tokens for profile '{}'?",
+                profile
+            ))
+            .default(false)
+            .interact()?;
+        if !confirmed {
+            return Ok(());
+        }
+    }
+
+    // Revoke the access token with Linear
+    if let Err(e) = oauth::revoke_token(&oauth_config.access_token).await {
+        eprintln!("Warning: Failed to revoke token with Linear: {}", e);
+        eprintln!("Clearing local tokens anyway...");
+    }
+
+    // Clear local tokens
+    config::clear_oauth_config(&profile)?;
+
+    if output.is_json() || output.has_template() {
+        print_json_owned(
+            json!({
+                "profile": profile,
+                "revoked": true,
+            }),
+            output,
+        )?;
+        return Ok(());
+    }
+
+    println!("OAuth tokens revoked for profile '{}'", profile);
     Ok(())
 }
