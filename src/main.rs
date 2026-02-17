@@ -6,6 +6,7 @@ mod dates;
 mod error;
 mod input;
 mod json_path;
+mod oauth;
 #[cfg(feature = "secure-storage")]
 mod keyring;
 mod output;
@@ -259,7 +260,10 @@ enum Commands {
     #[command(after_help = r#"EXAMPLES:
     linear auth login                        # Store API key
     linear auth status                       # Show auth status
-    linear auth logout                       # Remove current profile"#)]
+    linear auth logout                       # Remove current profile
+    linear auth oauth                        # Authenticate via OAuth 2.0
+    linear auth oauth --client-id MY_ID      # Use custom OAuth app
+    linear auth revoke                       # Revoke OAuth tokens"#)]
     Auth {
         #[command(subcommand)]
         action: auth::AuthCommands,
