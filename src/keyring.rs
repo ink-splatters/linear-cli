@@ -76,6 +76,46 @@ pub fn is_available() -> bool {
     }
 }
 
+const OAUTH_SERVICE_NAME: &str = "linear-cli-oauth";
+
+/// Get OAuth tokens JSON from keyring for a profile
+pub fn get_oauth_tokens(profile: &str) -> Result<Option<String>> {
+    let entry = keyring::Entry::new(OAUTH_SERVICE_NAME, profile)
+        .context("Failed to create keyring entry")?;
+
+    match entry.get_password() {
+        Ok(json) => Ok(Some(json)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(keyring::Error::NoStorageAccess(_)) => Ok(None),
+        Err(e) => {
+            if !crate::output::is_quiet() {
+                eprintln!("Warning: Keyring OAuth error ({}), falling back to config", e);
+            }
+            Ok(None)
+        }
+    }
+}
+
+/// Store OAuth tokens JSON in keyring for a profile
+pub fn set_oauth_tokens(profile: &str, json: &str) -> Result<()> {
+    let entry = keyring::Entry::new(OAUTH_SERVICE_NAME, profile)
+        .context("Failed to create keyring entry")?;
+    entry.set_password(json)
+        .context("Failed to store OAuth tokens in keyring")?;
+    Ok(())
+}
+
+/// Delete OAuth tokens from keyring for a profile
+pub fn delete_oauth_tokens(profile: &str) -> Result<()> {
+    let entry = keyring::Entry::new(OAUTH_SERVICE_NAME, profile)
+        .context("Failed to create keyring entry")?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(e).context("Failed to delete OAuth tokens from keyring"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

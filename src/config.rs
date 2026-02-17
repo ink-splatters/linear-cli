@@ -9,8 +9,21 @@ use std::sync::OnceLock;
 use std::io::Write;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OAuthConfig {
+    pub client_id: String,
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub expires_at: Option<i64>,
+    pub token_type: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Workspace {
     pub api_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oauth: Option<OAuthConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -45,6 +58,7 @@ pub fn load_config() -> Result<Config> {
                     "default".to_string(),
                     Workspace {
                         api_key: legacy_key,
+                        oauth: None,
                     },
                 );
                 if config.current.is_none() {
@@ -94,10 +108,12 @@ pub fn set_api_key(key: &str) -> Result<()> {
     let workspace_name = profile
         .or_else(|| config.current.clone())
         .unwrap_or_else(|| "default".to_string());
+    let existing_oauth = config.workspaces.get(&workspace_name).and_then(|w| w.oauth.clone());
     config.workspaces.insert(
         workspace_name.clone(),
         Workspace {
             api_key: key.to_string(),
+            oauth: existing_oauth,
         },
     );
     if config.current.is_none() {
@@ -127,6 +143,22 @@ pub fn get_api_key() -> Result<String> {
 
         if let Ok(Some(key)) = crate::keyring::get_key(&profile) {
             return Ok(key);
+        }
+    }
+
+    // Check for OAuth tokens
+    {
+        let config = load_config()?;
+        let profile = std::env::var("LINEAR_CLI_PROFILE")
+            .ok()
+            .filter(|p| !p.is_empty())
+            .or(config.current.clone())
+            .unwrap_or_else(|| "default".to_string());
+
+        if let Ok(Some(oauth)) = get_oauth_config(&profile) {
+            if !oauth.access_token.is_empty() {
+                return Ok(format!("Bearer {}", oauth.access_token));
+            }
         }
     }
 
@@ -171,10 +203,12 @@ pub fn current_profile() -> Result<String> {
 
 pub fn set_workspace_key(name: &str, api_key: &str) -> Result<()> {
     let mut config = load_config()?;
+    let existing_oauth = config.workspaces.get(name).and_then(|w| w.oauth.clone());
     config.workspaces.insert(
         name.to_string(),
         Workspace {
             api_key: api_key.to_string(),
+            oauth: existing_oauth,
         },
     );
     if config.current.is_none() {
@@ -253,6 +287,7 @@ pub fn workspace_add(name: &str, api_key: &str) -> Result<()> {
         name.to_string(),
         Workspace {
             api_key: api_key.to_string(),
+            oauth: None,
         },
     );
 
@@ -361,6 +396,51 @@ pub fn workspace_remove(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Save OAuth config for a profile
+pub fn save_oauth_config(profile: &str, oauth_config: &OAuthConfig) -> Result<()> {
+    let mut config = load_config()?;
+    let workspace = config.workspaces.entry(profile.to_string())
+        .or_insert_with(|| Workspace { api_key: String::new(), oauth: None });
+    workspace.oauth = Some(oauth_config.clone());
+    if config.current.is_none() {
+        config.current = Some(profile.to_string());
+    }
+    save_config(&config)?;
+    Ok(())
+}
+
+/// Get OAuth config for a profile
+pub fn get_oauth_config(profile: &str) -> Result<Option<OAuthConfig>> {
+    // Try keyring first if feature enabled
+    #[cfg(feature = "secure-storage")]
+    {
+        if let Ok(Some(json_str)) = crate::keyring::get_oauth_tokens(profile) {
+            if let Ok(oauth) = serde_json::from_str::<OAuthConfig>(&json_str) {
+                return Ok(Some(oauth));
+            }
+        }
+    }
+
+    // Fall back to config file
+    let config = load_config()?;
+    Ok(config.workspaces.get(profile).and_then(|w| w.oauth.clone()))
+}
+
+/// Clear OAuth config for a profile
+pub fn clear_oauth_config(profile: &str) -> Result<()> {
+    #[cfg(feature = "secure-storage")]
+    {
+        let _ = crate::keyring::delete_oauth_tokens(profile);
+    }
+
+    let mut config = load_config()?;
+    if let Some(workspace) = config.workspaces.get_mut(profile) {
+        workspace.oauth = None;
+    }
+    save_config(&config)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,12 +461,14 @@ mod tests {
             "prod".to_string(),
             Workspace {
                 api_key: "lin_api_prod123".to_string(),
+                oauth: None,
             },
         );
         config.workspaces.insert(
             "staging".to_string(),
             Workspace {
                 api_key: "lin_api_staging456".to_string(),
+                oauth: None,
             },
         );
 
@@ -440,5 +522,86 @@ mod tests {
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
         assert!(!toml_str.contains("api_key"));
+    }
+
+    #[test]
+    fn test_config_with_oauth_parse() {
+        let toml_str = r#"
+            current = "oauth-profile"
+
+            [workspaces.oauth-profile]
+            api_key = ""
+
+            [workspaces.oauth-profile.oauth]
+            client_id = "abc123"
+            access_token = "lin_oauth_xxx"
+            refresh_token = "lin_refresh_yyy"
+            expires_at = 1700000000
+            token_type = "Bearer"
+            scopes = ["read", "write"]
+        "#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.current, Some("oauth-profile".to_string()));
+        let ws = &config.workspaces["oauth-profile"];
+        assert!(ws.oauth.is_some());
+        let oauth = ws.oauth.as_ref().unwrap();
+        assert_eq!(oauth.client_id, "abc123");
+        assert_eq!(oauth.access_token, "lin_oauth_xxx");
+        assert_eq!(oauth.refresh_token, Some("lin_refresh_yyy".to_string()));
+        assert_eq!(oauth.expires_at, Some(1700000000));
+        assert_eq!(oauth.scopes, vec!["read", "write"]);
+    }
+
+    #[test]
+    fn test_config_without_oauth_still_parses() {
+        let toml_str = r#"
+            current = "default"
+
+            [workspaces.default]
+            api_key = "lin_api_key1"
+        "#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let ws = &config.workspaces["default"];
+        assert!(ws.oauth.is_none());
+    }
+
+    #[test]
+    fn test_oauth_config_serialize() {
+        let oauth = OAuthConfig {
+            client_id: "test".to_string(),
+            access_token: "acc".to_string(),
+            refresh_token: Some("ref".to_string()),
+            expires_at: Some(1700000000),
+            token_type: "Bearer".to_string(),
+            scopes: vec!["read".to_string()],
+        };
+        let json = serde_json::to_string(&oauth).unwrap();
+        let parsed: OAuthConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.client_id, "test");
+    }
+
+    #[test]
+    fn test_config_with_mixed_profiles() {
+        let toml_str = r#"
+            current = "default"
+
+            [workspaces.default]
+            api_key = "lin_api_key1"
+
+            [workspaces.oauth-ws]
+            api_key = ""
+
+            [workspaces.oauth-ws.oauth]
+            client_id = "cid"
+            access_token = "at"
+            token_type = "Bearer"
+            scopes = ["read"]
+        "#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.workspaces["default"].oauth.is_none());
+        assert!(config.workspaces["oauth-ws"].oauth.is_some());
     }
 }
