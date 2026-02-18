@@ -4,7 +4,7 @@ use colored::Colorize;
 use serde_json::json;
 use tabled::{Table, Tabled};
 
-use crate::api::LinearClient;
+use crate::api::{resolve_project_id, LinearClient};
 use crate::display_options;
 use crate::input::read_ids_from_stdin;
 use crate::output::{
@@ -363,9 +363,11 @@ async fn create_document(
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
+    let project_id = resolve_project_id(&client, project, &output.cache).await?;
+
     let mut input = json!({
         "title": title,
-        "projectId": project
+        "projectId": project_id
     });
 
     if let Some(c) = content {

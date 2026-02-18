@@ -538,6 +538,7 @@ async fn list_issues(
                     priority
                     state { name }
                     assignee { name }
+                    project { name }
                 }
                 pageInfo {
                     hasNextPage
@@ -1244,10 +1245,11 @@ async fn create_issue(
             println!("  Title:       {}", final_title);
             println!("  Team:        {} ({})", final_team, team_id);
             if let Some(ref desc) = description {
-                let preview = if desc.len() > 50 {
-                    format!("{}...", &desc[..50])
+                let preview: String = desc.chars().take(50).collect();
+                let preview = if preview.len() < desc.len() {
+                    format!("{}...", preview)
                 } else {
-                    desc.clone()
+                    preview
                 };
                 println!("  Description: {}", preview);
             }

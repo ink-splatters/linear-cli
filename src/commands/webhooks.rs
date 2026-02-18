@@ -39,10 +39,10 @@ pub enum WebhookCommands {
         #[arg(long, value_delimiter = ',')]
         events: Vec<String>,
         /// Scope to a specific team
-        #[arg(short, long)]
+        #[arg(short, long, conflicts_with = "all_teams")]
         team: Option<String>,
         /// Receive events for all public teams
-        #[arg(long)]
+        #[arg(long, conflicts_with = "team")]
         all_teams: bool,
         /// Human-readable label for the webhook
         #[arg(short, long)]
@@ -585,7 +585,7 @@ async fn rotate_secret(id: &str, output: &OutputOptions) -> Result<()> {
     Ok(())
 }
 
-/// Verify HMAC-SHA256 signature from Linear webhook
+/// Verify HMAC-SHA256 signature from Linear webhook using constant-time comparison
 fn verify_signature(secret: &str, body: &[u8], signature: &str) -> bool {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
@@ -594,8 +594,10 @@ fn verify_signature(secret: &str, body: &[u8], signature: &str) -> bool {
         return false;
     };
     mac.update(body);
-    let expected = hex::encode(mac.finalize().into_bytes());
-    expected == signature
+    let Ok(sig_bytes) = hex::decode(signature) else {
+        return false;
+    };
+    mac.verify_slice(&sig_bytes).is_ok()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -693,9 +695,22 @@ async fn listen(
     println!("  Press Ctrl+C to stop and clean up.\n");
 
     // Start the HTTP server
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
-        .await
-        .context(format!("Failed to bind to port {}", port))?;
+    let listener = match tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await {
+        Ok(l) => l,
+        Err(e) => {
+            // Clean up the webhook we just created before returning the error
+            eprintln!("Failed to bind to port {}, cleaning up webhook...", port);
+            let delete_mutation = r#"
+                mutation($id: String!) {
+                    webhookDelete(id: $id) { success }
+                }
+            "#;
+            let _ = client
+                .mutate(delete_mutation, Some(json!({ "id": webhook_id })))
+                .await;
+            return Err(e).context(format!("Failed to bind to port {}", port));
+        }
+    };
 
     // Set up Ctrl+C handler
     let webhook_id_clone = webhook_id.clone();
@@ -828,9 +843,12 @@ async fn handle_connection(
         } else {
             eprintln!(
                 "{} Missing signature from {}",
-                "!".yellow(),
+                "!".red(),
                 addr
             );
+            let response = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n";
+            stream.write_all(response.as_bytes()).await?;
+            return Ok(());
         }
     }
 

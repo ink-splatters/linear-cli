@@ -608,8 +608,8 @@ impl LinearClient {
     }
 
     pub async fn mutate(&self, mutation: &str, variables: Option<Value>) -> Result<Value> {
-        // Mutations are retried - Linear API is idempotent for creates/updates
-        self.query(mutation, variables).await
+        // Mutations must not be retried to avoid duplicate side effects
+        self.query_once(mutation, variables).await
     }
 
     /// Stream response bytes directly to a writer (for large downloads)

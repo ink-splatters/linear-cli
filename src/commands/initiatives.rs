@@ -95,13 +95,14 @@ async fn list_initiatives(output: &OutputOptions) -> Result<()> {
 
     let query = r#"
         query {
-            initiatives(first: 100) {
+            initiatives(first: 250) {
                 nodes {
                     id
                     name
                     description
                     status
                     sortOrder
+                    progress
                     projects {
                         nodes {
                             id
