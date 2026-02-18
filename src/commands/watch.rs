@@ -8,6 +8,7 @@ use crate::output::{print_json_owned, OutputOptions};
 
 /// Watch for changes to an issue and print updates
 pub async fn watch_issue(id: &str, interval_secs: u64, output: &OutputOptions) -> Result<()> {
+    let interval_secs = interval_secs.max(5);
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -94,6 +95,7 @@ pub async fn watch_issue(id: &str, interval_secs: u64, output: &OutputOptions) -
 
 /// Watch for changes to a project and print updates
 pub async fn watch_project(id: &str, interval_secs: u64, output: &OutputOptions) -> Result<()> {
+    let interval_secs = interval_secs.max(5);
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -175,6 +177,7 @@ pub async fn watch_project(id: &str, interval_secs: u64, output: &OutputOptions)
 
 /// Watch for changes to a team and print updates
 pub async fn watch_team(team: &str, interval_secs: u64, output: &OutputOptions) -> Result<()> {
+    let interval_secs = interval_secs.max(5);
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -189,7 +192,7 @@ pub async fn watch_team(team: &str, interval_secs: u64, output: &OutputOptions) 
                     name
                     progress
                 }
-                issues(first: 0) {
+                issues(first: 1) {
                     __typename
                 }
             }

@@ -43,12 +43,12 @@ async fn issue_history(id: &str, limit: usize, output: &OutputOptions) -> Result
 
     // First get the issue ID if identifier provided
     let issue_query = r#"
-        query($id: String!) {
+        query($id: String!, $limit: Int!) {
             issue(id: $id) {
                 id
                 identifier
                 title
-                history(first: 50) {
+                history(first: $limit) {
                     nodes {
                         id
                         createdAt
@@ -61,8 +61,8 @@ async fn issue_history(id: &str, limit: usize, output: &OutputOptions) -> Result
                         toPriority
                         fromEstimate
                         toEstimate
-                        addedLabels { nodes { name } }
-                        removedLabels { nodes { name } }
+                        addedLabels { name }
+                        removedLabels { name }
                         relationChanges {
                             type
                             issue { identifier }
@@ -73,7 +73,7 @@ async fn issue_history(id: &str, limit: usize, output: &OutputOptions) -> Result
         }
     "#;
 
-    let result = client.query(issue_query, Some(json!({ "id": id }))).await?;
+    let result = client.query(issue_query, Some(json!({ "id": id, "limit": limit }))).await?;
     let issue = &result["data"]["issue"];
 
     if issue.is_null() {
@@ -151,7 +151,7 @@ async fn issue_history(id: &str, limit: usize, output: &OutputOptions) -> Result
                     );
                 }
                 // Labels added
-                else if let Some(labels) = h["addedLabels"]["nodes"].as_array() {
+                else if let Some(labels) = h["addedLabels"].as_array() {
                     if !labels.is_empty() {
                         action = "Labels +".to_string();
                         details = labels
@@ -162,7 +162,7 @@ async fn issue_history(id: &str, limit: usize, output: &OutputOptions) -> Result
                     }
                 }
                 // Labels removed
-                else if let Some(labels) = h["removedLabels"]["nodes"].as_array() {
+                else if let Some(labels) = h["removedLabels"].as_array() {
                     if !labels.is_empty() {
                         action = "Labels -".to_string();
                         details = labels

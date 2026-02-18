@@ -276,7 +276,7 @@ async fn get_cycle(id: &str, output: &OutputOptions) -> Result<()> {
                 scopeHistory
                 completedScopeHistory
                 team { name key }
-                issues(first: 50) {
+                issues(first: 250) {
                     nodes {
                         id
                         identifier
@@ -328,11 +328,11 @@ async fn get_cycle(id: &str, output: &OutputOptions) -> Result<()> {
 
     println!(
         "Start: {}",
-        cycle.starts_at.as_deref().map(|s| &s[..10]).unwrap_or("-")
+        cycle.starts_at.as_deref().map(|s| s.get(..10).unwrap_or(s)).unwrap_or("-")
     );
     println!(
         "End: {}",
-        cycle.ends_at.as_deref().map(|s| &s[..10]).unwrap_or("-")
+        cycle.ends_at.as_deref().map(|s| s.get(..10).unwrap_or(s)).unwrap_or("-")
     );
     println!("Progress: {:.0}%", progress * 100.0);
 
@@ -399,7 +399,7 @@ async fn current_cycle(team: &str, output: &OutputOptions) -> Result<()> {
                     startsAt
                     endsAt
                     progress
-                    issues(first: 50) {
+                    issues(first: 250) {
                         nodes {
                             id
                             identifier
@@ -449,11 +449,11 @@ async fn current_cycle(team: &str, output: &OutputOptions) -> Result<()> {
     println!("Cycle Number: {}", cycle_number);
     println!(
         "Start Date: {}",
-        cycle.starts_at.as_deref().map(|s| &s[..10]).unwrap_or("-")
+        cycle.starts_at.as_deref().map(|s| s.get(..10).unwrap_or(s)).unwrap_or("-")
     );
     println!(
         "End Date: {}",
-        cycle.ends_at.as_deref().map(|s| &s[..10]).unwrap_or("-")
+        cycle.ends_at.as_deref().map(|s| s.get(..10).unwrap_or(s)).unwrap_or("-")
     );
     println!("Progress: {:.0}%", progress * 100.0);
     println!("ID: {}", cycle.id);

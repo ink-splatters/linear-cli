@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Subcommand;
 use serde_json::json;
 
-use crate::api::LinearClient;
+use crate::api::{resolve_team_id, LinearClient};
 use crate::output::{print_json_owned, OutputOptions};
 
 #[derive(Subcommand, Debug)]
@@ -38,8 +38,36 @@ pub async fn handle(cmd: MetricsCommands, output: &OutputOptions) -> Result<()> 
     }
 }
 
-async fn cycle_metrics(id: &str, _team: Option<String>, output: &OutputOptions) -> Result<()> {
+async fn cycle_metrics(id: &str, team: Option<String>, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
+
+    // If --team is provided and id looks like a cycle number, resolve by team + number
+    let cycle_id = if let Some(ref t) = team {
+        if id.parse::<u64>().is_ok() {
+            let team_id = resolve_team_id(&client, t, &output.cache).await?;
+            let lookup_query = r#"
+                query($teamId: String!) {
+                    team(id: $teamId) {
+                        cycles { nodes { id number } }
+                    }
+                }
+            "#;
+            let result = client.query(lookup_query, Some(json!({ "teamId": team_id }))).await?;
+            let num: u64 = id.parse().unwrap();
+            result["data"]["team"]["cycles"]["nodes"]
+                .as_array()
+                .and_then(|arr| {
+                    arr.iter()
+                        .find(|c| c["number"].as_u64() == Some(num))
+                        .and_then(|c| c["id"].as_str().map(|s| s.to_string()))
+                })
+                .ok_or_else(|| anyhow::anyhow!("Cycle {} not found for team {}", id, t))?
+        } else {
+            id.to_string()
+        }
+    } else {
+        id.to_string()
+    };
 
     let query = r#"
         query($id: String!) {
@@ -68,7 +96,7 @@ async fn cycle_metrics(id: &str, _team: Option<String>, output: &OutputOptions) 
         }
     "#;
 
-    let result = client.query(query, Some(json!({ "id": id }))).await?;
+    let result = client.query(query, Some(json!({ "id": cycle_id }))).await?;
     let cycle = &result["data"]["cycle"];
 
     if cycle.is_null() {
@@ -214,6 +242,7 @@ async fn project_metrics(id: &str, output: &OutputOptions) -> Result<()> {
 
 async fn velocity_metrics(team: &str, cycles: usize, output: &OutputOptions) -> Result<()> {
     let client = LinearClient::new()?;
+    let team_id = resolve_team_id(&client, team, &output.cache).await?;
 
     let query = r#"
         query($teamId: String!, $first: Int!) {
@@ -239,7 +268,7 @@ async fn velocity_metrics(team: &str, cycles: usize, output: &OutputOptions) -> 
     "#;
 
     let result = client
-        .query(query, Some(json!({ "teamId": team, "first": cycles })))
+        .query(query, Some(json!({ "teamId": team_id, "first": cycles })))
         .await?;
     let team_data = &result["data"]["team"];
 
