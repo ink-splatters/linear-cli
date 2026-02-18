@@ -375,9 +375,7 @@ async fn update_milestone(
 
 async fn delete_milestone(id: &str, force: bool) -> Result<()> {
     if !force {
-        println!("Are you sure you want to delete milestone {}?", id);
-        println!("Use --force to skip this confirmation.");
-        return Ok(());
+        anyhow::bail!("Delete requires --force flag. Use: linear milestones delete {} --force", id);
     }
 
     let client = LinearClient::new()?;

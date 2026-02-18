@@ -316,7 +316,7 @@ async fn get_user(user: &str, output: &OutputOptions) -> Result<()> {
     );
 
     if let Some(created) = raw["createdAt"].as_str() {
-        println!("Created: {}", &created[..10]);
+        println!("Created: {}", created.get(..10).unwrap_or(created));
     }
 
     println!("URL: {}", raw["url"].as_str().unwrap_or("-"));

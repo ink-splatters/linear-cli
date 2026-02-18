@@ -170,6 +170,12 @@ pub fn config_file_path() -> Result<PathBuf> {
     config_path()
 }
 
+/// Returns the current workspace profile name.
+///
+/// NOTE: The result is cached via OnceLock for the lifetime of the process.
+/// If the profile is changed in-process (e.g., via `workspace_switch`), the
+/// cached value will be stale. This is acceptable because profile switches
+/// during a single CLI invocation are not a supported use case.
 pub fn current_profile() -> Result<String> {
     static PROFILE: OnceLock<String> = OnceLock::new();
 

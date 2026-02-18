@@ -89,22 +89,44 @@ struct LabelRow {
     id: String,
 }
 
+fn validate_label_type(label_type: &str) -> Result<()> {
+    match label_type {
+        "project" | "issue" => Ok(()),
+        other => anyhow::bail!(
+            "Invalid label type '{}'. Must be 'project' or 'issue'.",
+            other
+        ),
+    }
+}
+
 pub async fn handle(cmd: LabelCommands, output: &OutputOptions) -> Result<()> {
     match cmd {
-        LabelCommands::List { r#type } => list_labels(&r#type, output).await,
+        LabelCommands::List { r#type } => {
+            validate_label_type(&r#type)?;
+            list_labels(&r#type, output).await
+        }
         LabelCommands::Create {
             name,
             r#type,
             color,
             parent,
-        } => create_label(&name, &r#type, &color, parent, output).await,
-        LabelCommands::Delete { id, r#type, force } => delete_label(&id, &r#type, force).await,
+        } => {
+            validate_label_type(&r#type)?;
+            create_label(&name, &r#type, &color, parent, output).await
+        }
+        LabelCommands::Delete { id, r#type, force } => {
+            validate_label_type(&r#type)?;
+            delete_label(&id, &r#type, force).await
+        }
         LabelCommands::Update {
             id,
             r#type,
             name,
             color,
-        } => update_label(&id, &r#type, name, color).await,
+        } => {
+            validate_label_type(&r#type)?;
+            update_label(&id, &r#type, name, color, output).await
+        }
     }
 }
 
@@ -320,12 +342,7 @@ async fn create_label(
 
 async fn delete_label(id: &str, label_type: &str, force: bool) -> Result<()> {
     if !force {
-        println!(
-            "Are you sure you want to delete {} label {}?",
-            label_type, id
-        );
-        println!("Use --force to skip this prompt.");
-        return Ok(());
+        anyhow::bail!("Delete requires --force flag. Use: linear labels delete {} --force", id);
     }
 
     let client = LinearClient::new()?;
@@ -373,6 +390,7 @@ async fn update_label(
     label_type: &str,
     name: Option<String>,
     color: Option<String>,
+    output: &OutputOptions,
 ) -> Result<()> {
     if name.is_none() && color.is_none() {
         println!("No updates specified. Use --name or --color.");
@@ -426,6 +444,12 @@ async fn update_label(
 
     if result["data"][key]["success"].as_bool() == Some(true) {
         let label = &result["data"][key][label_key];
+
+        if output.is_json() || output.has_template() {
+            print_json(label, output)?;
+            return Ok(());
+        }
+
         println!(
             "{} Updated {} label: {}",
             "+".green(),

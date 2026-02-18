@@ -339,9 +339,7 @@ fn delete_template(name: &str, force: bool, output: &OutputOptions) -> Result<()
     }
 
     if !force {
-        println!("Are you sure you want to delete this template?");
-        println!("Use --force to skip this prompt.");
-        return Ok(());
+        anyhow::bail!("Delete requires --force flag. Use: linear templates delete {} --force", name);
     }
 
     store.templates.remove(name);

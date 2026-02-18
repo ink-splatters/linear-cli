@@ -92,6 +92,11 @@ fn parse_duration(duration: &str) -> Result<i32> {
             let minutes: i32 = current_num.parse().unwrap_or(0);
             total_minutes += minutes;
             current_num.clear();
+        } else {
+            anyhow::bail!(
+                "Invalid character '{}' in duration. Use format like '2h', '30m', or '1h30m'",
+                c
+            );
         }
     }
 
